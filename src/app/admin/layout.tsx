@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   FaHome, FaFileAlt, FaBox, FaTags, FaStar, FaQuestionCircle,
   FaShoppingCart, FaUsers, FaMoneyBillWave, FaCog, FaImage,
-  FaChartBar, FaSignOutAlt, FaBars, FaTimes, FaBullhorn, FaTicketAlt, FaInbox,
+  FaChartBar, FaSignOutAlt, FaBars, FaTimes, FaBullhorn, FaTicketAlt, FaInbox, FaWhatsapp,
 } from "react-icons/fa";
 import toast from "react-hot-toast";
 
@@ -60,6 +60,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { href: "/admin/affiliates", icon: FaUsers, label: "Afiliasi" },
       { href: "/admin/commissions", icon: FaMoneyBillWave, label: "Komisi" },
       { href: "/admin/settings", icon: FaCog, label: "Pengaturan Situs" },
+      { href: "/admin/whatsapp", icon: FaWhatsapp, label: "Notifikasi WA" },
       { href: "/admin/tracking", icon: FaChartBar, label: "Pixel/Pelacakan" },
       { href: "/admin/media", icon: FaImage, label: "Media" },
     ],

@@ -5,6 +5,15 @@ import {
 } from "@/lib/supabase/server";
 import { sendPaidOrderEmail } from "@/lib/email";
 import { ensureAffiliateAuthAccount } from "@/lib/affiliate-auth";
+import {
+  ensureWhatsappAutomationLoop,
+  syncOrderWhatsappFollowups,
+} from "@/lib/whatsapp-automation";
+import {
+  buildWhatsappOrderContext,
+  getWhatsappNotificationConfig,
+  sendOrderStatusWhatsappNotification,
+} from "@/lib/whatsapp-notifications";
 
 const VALID_ORDER_STATUSES = ["pending", "paid", "failed", "cancelled"] as const;
 
@@ -49,7 +58,7 @@ export async function POST(
     const serviceSupabase = await createServiceRoleClient();
     const { data: existingOrder, error: existingOrderError } = await serviceSupabase
       .from("orders")
-      .select("id, order_code, status, buyer_name, buyer_email, product_name, total_amount")
+      .select("id, order_code, status, buyer_name, buyer_email, buyer_whatsapp, product_name, product_id, total_amount, created_at")
       .eq("id", id)
       .single();
 
@@ -64,7 +73,7 @@ export async function POST(
       .from("orders")
       .update({ status: nextStatus })
       .eq("id", id)
-      .select("id, order_code, status, buyer_name, buyer_email, product_name, total_amount")
+      .select("id, order_code, status, buyer_name, buyer_email, buyer_whatsapp, product_name, product_id, total_amount, created_at")
       .single();
 
     if (updateError || !updatedOrder) {
@@ -75,6 +84,9 @@ export async function POST(
     }
 
     let emailResult: { messageId?: string; skipped?: boolean; error?: string } = {
+      skipped: true,
+    };
+    let whatsappResult: { customerSent?: boolean; skipped?: boolean; error?: string } = {
       skipped: true,
     };
 
@@ -147,10 +159,94 @@ export async function POST(
       }
     }
 
+    const [{ data: settings }, { data: product }] = await Promise.all([
+      serviceSupabase
+        .from("site_settings")
+        .select("site_name, whatsapp_number, social_links")
+        .limit(1)
+        .single(),
+      updatedOrder.product_id
+        ? serviceSupabase
+            .from("products")
+            .select("thumbnail_url")
+            .eq("id", updatedOrder.product_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    const whatsappConfig = getWhatsappNotificationConfig(
+      settings?.social_links as Record<string, unknown> | null,
+      settings?.whatsapp_number || null
+    );
+
+    try {
+      const origin =
+        request.nextUrl.origin ||
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        "http://localhost:3000";
+
+      const result = await sendOrderStatusWhatsappNotification({
+        config: whatsappConfig,
+        order: buildWhatsappOrderContext({
+          id: updatedOrder.id,
+          orderCode: updatedOrder.order_code,
+          buyerName: updatedOrder.buyer_name,
+          buyerEmail: updatedOrder.buyer_email,
+          buyerWhatsapp: updatedOrder.buyer_whatsapp,
+          productName: updatedOrder.product_name,
+          totalAmount: Number(updatedOrder.total_amount || 0),
+          status: updatedOrder.status,
+          previousStatus: existingOrder.status,
+          createdAt: updatedOrder.created_at,
+          siteName: settings?.site_name || "AzkazamDigital",
+          productImageUrl: product?.thumbnail_url || null,
+        }),
+        origin,
+      });
+
+      whatsappResult = {
+        ...result,
+        skipped: false,
+      };
+    } catch (error) {
+      console.error("Send order status WhatsApp error:", error);
+      whatsappResult = {
+        skipped: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to send WhatsApp status notification.",
+      };
+    }
+
+    try {
+      await syncOrderWhatsappFollowups({
+        config: whatsappConfig,
+        supabase: serviceSupabase,
+        order: {
+          id: updatedOrder.id,
+          order_code: updatedOrder.order_code,
+          buyer_name: updatedOrder.buyer_name,
+          buyer_email: updatedOrder.buyer_email,
+          buyer_whatsapp: updatedOrder.buyer_whatsapp,
+          product_name: updatedOrder.product_name,
+          product_id: updatedOrder.product_id,
+          total_amount: Number(updatedOrder.total_amount || 0),
+          status: updatedOrder.status,
+          created_at: updatedOrder.created_at,
+        },
+      });
+      ensureWhatsappAutomationLoop();
+    } catch (followupError) {
+      console.error("Sync WhatsApp followups on status change error:", followupError);
+    }
+
     return NextResponse.json({
       success: true,
       order: updatedOrder,
       email: emailResult,
+      whatsapp: whatsappResult,
     });
   } catch (error) {
     console.error("Admin order status route error:", error);

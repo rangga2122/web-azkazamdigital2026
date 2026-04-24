@@ -5,6 +5,16 @@ import {
 } from "@/lib/supabase/server";
 import { sendOrderInvoiceEmail } from "@/lib/email";
 import { generateOrderCode } from "@/lib/utils";
+import {
+  ensureWhatsappAutomationLoop,
+  syncOrderWhatsappFollowups,
+} from "@/lib/whatsapp-automation";
+import {
+  buildWhatsappOrderContext,
+  getWhatsappNotificationConfig,
+  productImageFromProduct,
+  sendOrderCreatedWhatsappNotifications,
+} from "@/lib/whatsapp-notifications";
 
 type CreateOrderPayload = {
   product_id?: string;
@@ -58,14 +68,14 @@ export async function POST(request: NextRequest) {
     const { data: settings } = await supabase
       .from("site_settings")
       .select(
-        "checkout_coupon_enabled, site_name, email, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number"
+        "checkout_coupon_enabled, site_name, email, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number, social_links"
       )
       .limit(1)
       .single();
 
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, title, price, affiliate_commission_rate, is_active")
+      .select("id, title, price, affiliate_commission_rate, is_active, thumbnail_url")
       .eq("id", product_id)
       .single();
 
@@ -174,7 +184,7 @@ export async function POST(request: NextRequest) {
           referral_code: affiliate?.referral_code || null,
         },
       })
-      .select("id, order_code")
+      .select("id, order_code, created_at, status")
       .single();
 
     if (orderError || !order) {
@@ -194,6 +204,12 @@ export async function POST(request: NextRequest) {
     let emailResult: { messageId?: string; skipped?: boolean; error?: string } = {
       skipped: true,
     };
+    let whatsappResult: {
+      adminSent?: boolean;
+      customerSent?: boolean;
+      skipped?: boolean;
+      error?: string;
+    } = { skipped: true };
 
     const origin =
       request.nextUrl.origin ||
@@ -239,11 +255,81 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    try {
+      const whatsappConfig = getWhatsappNotificationConfig(
+        settings?.social_links as Record<string, unknown> | null,
+        settings?.whatsapp_number || null
+      );
+      const origin =
+        request.nextUrl.origin ||
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        "http://localhost:3000";
+
+      const result = await sendOrderCreatedWhatsappNotifications({
+        config: whatsappConfig,
+        order: buildWhatsappOrderContext({
+          id: order.id,
+          orderCode: order.order_code,
+          buyerName: buyer_name,
+          buyerEmail: normalizedBuyerEmail,
+          buyerWhatsapp: buyer_whatsapp,
+          productName: product.title,
+          totalAmount,
+          status: order.status,
+          createdAt: order.created_at,
+          siteName: settings?.site_name || "AzkazamDigital",
+          productImageUrl: productImageFromProduct(product),
+        }),
+        origin,
+      });
+
+      whatsappResult = {
+        ...result,
+        skipped: false,
+      };
+    } catch (error) {
+      console.error("Send order WhatsApp notification error:", error);
+      whatsappResult = {
+        skipped: false,
+        error:
+          error instanceof Error ? error.message : "Failed to send WhatsApp notification.",
+      };
+    }
+
+    try {
+      const whatsappConfig = getWhatsappNotificationConfig(
+        settings?.social_links as Record<string, unknown> | null,
+        settings?.whatsapp_number || null
+      );
+
+      await syncOrderWhatsappFollowups({
+        config: whatsappConfig,
+        supabase,
+        order: {
+          id: order.id,
+          order_code: order.order_code,
+          buyer_name,
+          buyer_email: normalizedBuyerEmail,
+          buyer_whatsapp,
+          product_name: product.title,
+          product_id: product.id,
+          total_amount: totalAmount,
+          status: order.status,
+          created_at: order.created_at,
+        },
+      });
+      ensureWhatsappAutomationLoop();
+    } catch (error) {
+      console.error("Schedule WhatsApp followups error:", error);
+    }
+
     return NextResponse.json({
       success: true,
       order_code: order.order_code,
       total_amount: totalAmount,
       email: emailResult,
+      whatsapp: whatsappResult,
     });
   } catch (error) {
     console.error("Create order error:", error);

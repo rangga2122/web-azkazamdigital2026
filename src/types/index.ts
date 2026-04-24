@@ -280,6 +280,49 @@ export interface ContactMessage {
   updated_at: string;
 }
 
+export interface WhatsappBroadcast {
+  id: string;
+  status: "draft" | "running" | "paused" | "completed" | "stopped" | "failed";
+  template: string;
+  send_image: boolean;
+  image_url: string | null;
+  send_video: boolean;
+  video_url: string | null;
+  min_delay_seconds: number;
+  max_delay_seconds: number;
+  filter_statuses: string[] | null;
+  filter_date_from: string | null;
+  filter_date_to: string | null;
+  total_recipients: number;
+  sent_count: number;
+  failed_count: number;
+  current_index: number;
+  started_at: string | null;
+  paused_at: string | null;
+  completed_at: string | null;
+  stopped_at: string | null;
+  last_processed_at: string | null;
+  last_error: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WhatsappFollowupJob {
+  id: string;
+  order_id: string;
+  level: number;
+  scheduled_for: string;
+  status: "pending" | "processing" | "sent" | "cancelled" | "failed";
+  attempts: number;
+  locked_at: string | null;
+  sent_at: string | null;
+  cancelled_at: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Dashboard stats
 export interface DashboardStats {
   totalProducts: number;
