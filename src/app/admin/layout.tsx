@@ -48,21 +48,97 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const menuItems = useMemo(
     () => [
-      { href: "/admin", icon: FaHome, label: "Dasbor" },
-      { href: "/admin/inbox", icon: FaInbox, label: "Inbox", badge: unreadInboxCount },
-      { href: "/admin/pages", icon: FaFileAlt, label: "Halaman" },
-      { href: "/admin/products", icon: FaBox, label: "Produk" },
-      { href: "/admin/categories", icon: FaTags, label: "Kategori" },
-      { href: "/admin/testimonials", icon: FaStar, label: "Testimoni" },
-      { href: "/admin/faqs", icon: FaQuestionCircle, label: "Pertanyaan Umum" },
-      { href: "/admin/orders", icon: FaShoppingCart, label: "Pesanan" },
-      { href: "/admin/coupons", icon: FaTicketAlt, label: "Kode Kupon" },
-      { href: "/admin/affiliates", icon: FaUsers, label: "Afiliasi" },
-      { href: "/admin/commissions", icon: FaMoneyBillWave, label: "Komisi" },
-      { href: "/admin/settings", icon: FaCog, label: "Pengaturan Situs" },
-      { href: "/admin/whatsapp", icon: FaWhatsapp, label: "Notifikasi WA" },
-      { href: "/admin/tracking", icon: FaChartBar, label: "Pixel/Pelacakan" },
-      { href: "/admin/media", icon: FaImage, label: "Media" },
+      {
+        href: "/admin",
+        icon: FaHome,
+        label: "Dasbor",
+        iconColor: "text-sky-500",
+      },
+      {
+        href: "/admin/inbox",
+        icon: FaInbox,
+        label: "Inbox",
+        badge: unreadInboxCount,
+        iconColor: "text-violet-500",
+      },
+      {
+        href: "/admin/pages",
+        icon: FaFileAlt,
+        label: "Halaman",
+        iconColor: "text-amber-500",
+      },
+      {
+        href: "/admin/products",
+        icon: FaBox,
+        label: "Produk",
+        iconColor: "text-emerald-500",
+      },
+      {
+        href: "/admin/categories",
+        icon: FaTags,
+        label: "Kategori",
+        iconColor: "text-pink-500",
+      },
+      {
+        href: "/admin/testimonials",
+        icon: FaStar,
+        label: "Testimoni",
+        iconColor: "text-yellow-500",
+      },
+      {
+        href: "/admin/faqs",
+        icon: FaQuestionCircle,
+        label: "Pertanyaan Umum",
+        iconColor: "text-cyan-500",
+      },
+      {
+        href: "/admin/orders",
+        icon: FaShoppingCart,
+        label: "Pesanan",
+        iconColor: "text-indigo-500",
+      },
+      {
+        href: "/admin/coupons",
+        icon: FaTicketAlt,
+        label: "Kode Kupon",
+        iconColor: "text-rose-500",
+      },
+      {
+        href: "/admin/affiliates",
+        icon: FaUsers,
+        label: "Afiliasi",
+        iconColor: "text-purple-500",
+      },
+      {
+        href: "/admin/commissions",
+        icon: FaMoneyBillWave,
+        label: "Komisi",
+        iconColor: "text-lime-500",
+      },
+      {
+        href: "/admin/settings",
+        icon: FaCog,
+        label: "Pengaturan Situs",
+        iconColor: "text-slate-500",
+      },
+      {
+        href: "/admin/whatsapp",
+        icon: FaWhatsapp,
+        label: "Notifikasi WA",
+        iconColor: "text-green-500",
+      },
+      {
+        href: "/admin/tracking",
+        icon: FaChartBar,
+        label: "Pixel/Pelacakan",
+        iconColor: "text-blue-500",
+      },
+      {
+        href: "/admin/media",
+        icon: FaImage,
+        label: "Media",
+        iconColor: "text-fuchsia-500",
+      },
     ],
     [unreadInboxCount]
   );
@@ -75,21 +151,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="min-h-screen bg-dark-950 flex">
+    <div data-admin-panel className="min-h-screen bg-dark-950 flex">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-dark-900 border-r border-dark-800 transform transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-dark-800 bg-dark-900/95 shadow-2xl shadow-slate-950/10 backdrop-blur-xl transform transition-transform duration-300 lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex h-full flex-col">
           {/* Brand */}
-          <div className="flex h-16 items-center justify-between px-5 border-b border-dark-800">
-            <Link href="/admin" className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white font-bold text-xs">
+          <div className="flex h-[72px] items-center justify-between border-b border-dark-800/80 px-5 py-3">
+            <Link href="/admin" className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 via-accent-500 to-fuchsia-500 text-white font-bold text-xs shadow-lg shadow-primary-500/20">
                 AZ
               </div>
-              <span className="font-semibold text-white text-sm">Panel Admin</span>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-dark-500">
+                  AzkazamDigital
+                </div>
+                <span className="font-semibold text-white text-sm">Panel Admin</span>
+              </div>
             </Link>
             <button
               className="lg:hidden text-dark-400 hover:text-white"
@@ -100,7 +181,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
 
           {/* Menu */}
-          <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+          <nav className="flex-1 overflow-y-auto px-3 py-5">
+            <div className="mb-4 px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-dark-500">
+              Navigasi
+            </div>
+            <div className="space-y-1.5">
             {menuItems.map((item) => {
               const isActive = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
               return (
@@ -108,13 +193,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   key={item.href}
                   href={item.href}
                   onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
                     isActive
-                      ? "bg-primary-500/10 text-primary-400"
-                      : "text-dark-400 hover:text-white hover:bg-dark-800"
+                      ? "bg-white/95 text-slate-900 shadow-lg shadow-slate-950/8"
+                      : "text-dark-300 hover:bg-white/70 hover:text-slate-900"
                   }`}
                 >
-                  <item.icon size={16} />
+                  <item.icon
+                    size={16}
+                    className={`${isActive ? "text-primary-600" : item.iconColor} transition-colors duration-200`}
+                  />
                   <span className="flex-1">{item.label}</span>
                   {item.badge ? (
                     <span className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
@@ -124,22 +212,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </Link>
               );
             })}
+            </div>
           </nav>
 
           {/* Footer */}
-          <div className="border-t border-dark-800 p-3">
+          <div className="border-t border-dark-800/80 p-3">
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-dark-300 transition-all hover:bg-red-500/10 hover:text-red-500"
             >
-              <FaSignOutAlt size={16} />
+              <FaSignOutAlt size={16} className="text-red-500" />
               Keluar
             </button>
             <Link
               href="/"
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-dark-400 hover:text-white hover:bg-dark-800 transition-all mt-1"
+              className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-dark-300 transition-all hover:bg-white/70 hover:text-slate-900"
             >
-              <FaBullhorn size={16} />
+              <FaBullhorn size={16} className="text-sky-500" />
               Lihat Situs
             </Link>
           </div>
@@ -157,14 +246,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Main Content */}
       <div className="flex-1 lg:pl-64">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 glass border-b border-dark-700/50 h-16 flex items-center px-4 lg:px-8">
+        <header className="sticky top-0 z-30 flex h-20 items-center border-b border-dark-700/50 px-4 backdrop-blur-xl lg:px-8">
           <button
             className="lg:hidden text-dark-400 hover:text-white mr-4"
             onClick={() => setSidebarOpen(true)}
           >
             <FaBars size={20} />
           </button>
-          <div className="flex-1" />
+          <div className="glass flex w-full items-center justify-between rounded-2xl px-5 py-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-dark-500">
+                Admin Workspace
+              </div>
+              <div className="text-sm font-semibold text-white">
+                {menuItems.find((item) => pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href)))?.label || "Panel Admin"}
+              </div>
+            </div>
+            <div className="hidden rounded-full border border-dark-700/70 bg-dark-900/70 px-3 py-1.5 text-xs font-medium text-dark-300 md:block">
+              Desain baru, logika tetap aman
+            </div>
+          </div>
         </header>
 
         {/* Page Content */}

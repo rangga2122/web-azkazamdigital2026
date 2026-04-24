@@ -308,8 +308,8 @@ export default function AdminWhatsappPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Notifikasi WhatsApp</h1>
-          <p className="mt-1 text-sm text-dark-400">
+          <h1 className="text-3xl font-bold tracking-tight text-white">Notifikasi WhatsApp</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-dark-500">
             Kelola koneksi GOWA, notifikasi order, broadcast pelanggan massal,
             follow-up otomatis 1/2/3, serta video broadcast dalam satu panel.
           </p>
@@ -319,7 +319,7 @@ export default function AdminWhatsappPage() {
             type="button"
             onClick={() => void handleAutomationAction("process-now")}
             disabled={!canRunAutomation || automationBusy}
-            className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <FaSyncAlt size={14} />
             {automationBusy ? "Memproses..." : "Proses Sekarang"}
@@ -327,14 +327,14 @@ export default function AdminWhatsappPage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-primary-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-500/20 disabled:opacity-50"
           >
             <FaSave size={14} /> {saving ? "Menyimpan..." : "Simpan"}
           </button>
         </div>
       </div>
 
-      <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
+      <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
         <div className="mb-4 flex items-center gap-3">
           <div
             className={`relative h-6 w-11 cursor-pointer rounded-full transition-colors ${
@@ -349,10 +349,10 @@ export default function AdminWhatsappPage() {
             />
           </div>
           <div>
-            <h2 className="font-semibold text-white">
+            <h2 className="text-lg font-semibold text-white">
               {config.enabled ? "Notifikasi WA Aktif" : "Notifikasi WA Nonaktif"}
             </h2>
-            <p className="text-xs text-dark-400">
+            <p className="text-xs text-dark-500">
               Nomor admin fallback dari pengaturan situs: {fallbackWhatsapp || "-"}
             </p>
           </div>
@@ -392,7 +392,7 @@ export default function AdminWhatsappPage() {
           />
         </div>
 
-        <div className="mt-5 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-xs leading-6 text-sky-100">
+        <div className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-slate-700 shadow-sm">
           Untuk deployment Coolify, mode yang paling stabil adalah cron. Set env
           `WHATSAPP_AUTOMATION_MODE=cron` dan `WHATSAPP_AUTOMATION_CRON_SECRET`,
           lalu jadwalkan request ke `/api/cron/whatsapp?key=SECRET` tiap 1 menit.
@@ -400,7 +400,7 @@ export default function AdminWhatsappPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-dark-800 bg-dark-900 p-3">
+      <section className="rounded-3xl border border-dark-800 bg-dark-900 p-3 shadow-xl shadow-slate-950/5">
         <div className="flex flex-wrap gap-2">
           <TabButton
             label="Notifikasi"
@@ -422,7 +422,7 @@ export default function AdminWhatsappPage() {
 
       {activeTab === "notifications" ? (
         <>
-          <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
+          <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
             <h2 className="mb-4 font-semibold text-white">Perilaku Notifikasi</h2>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <ToggleCard
@@ -481,7 +481,7 @@ export default function AdminWhatsappPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
+          <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
             <h2 className="mb-4 font-semibold text-white">Template Pesan Order</h2>
             <div className="grid grid-cols-1 gap-5">
               <TemplateField
@@ -503,7 +503,7 @@ export default function AdminWhatsappPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
+          <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
             <div className="mb-4 flex items-center gap-3">
               <FaWhatsapp className="text-green-400" />
               <h2 className="font-semibold text-white">Tes Kirim</h2>
@@ -521,7 +521,7 @@ export default function AdminWhatsappPage() {
                   type="button"
                   onClick={handleSendTest}
                   disabled={!canSendTest || sendingTest}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <FaPaperPlane size={14} />
                   {sendingTest ? "Mengirim..." : "Kirim Tes"}
@@ -534,7 +534,7 @@ export default function AdminWhatsappPage() {
 
       {activeTab === "broadcast" ? (
         <>
-          <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
+          <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
             <div className="mb-4 flex items-center justify-between gap-4">
               <div>
                 <h2 className="font-semibold text-white">Broadcast Pelanggan Massal</h2>
@@ -549,7 +549,7 @@ export default function AdminWhatsappPage() {
                     type="button"
                     onClick={() => void handleAutomationAction("start-broadcast")}
                     disabled={!canRunAutomation || automationBusy}
-                    className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <FaPlay size={14} />
                     Mulai Broadcast
@@ -566,7 +566,7 @@ export default function AdminWhatsappPage() {
                       )
                     }
                     disabled={automationBusy}
-                    className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300 disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/20 disabled:opacity-50"
                   >
                     <FaPause size={14} />
                     Jeda
@@ -583,7 +583,7 @@ export default function AdminWhatsappPage() {
                       )
                     }
                     disabled={automationBusy}
-                    className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-300 disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                   >
                     <FaPlay size={14} />
                     Lanjutkan
@@ -600,7 +600,7 @@ export default function AdminWhatsappPage() {
                       )
                     }
                     disabled={automationBusy}
-                    className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-300 disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-red-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-rose-500/20 disabled:opacity-50"
                   >
                     <FaStop size={14} />
                     Hentikan
@@ -681,7 +681,7 @@ export default function AdminWhatsappPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
+          <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
             <h2 className="mb-4 font-semibold text-white">Media Broadcast</h2>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <ToggleCard
@@ -714,7 +714,7 @@ export default function AdminWhatsappPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
+          <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
             <h2 className="mb-4 font-semibold text-white">Status Broadcast</h2>
             {dashboard.activeBroadcast ? (
               <div className="rounded-xl border border-primary-500/20 bg-primary-500/5 p-5">
@@ -793,7 +793,7 @@ export default function AdminWhatsappPage() {
 
       {activeTab === "followups" ? (
         <>
-          <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
+          <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
             <div className="mb-4 flex items-center justify-between gap-4">
               <div>
                 <h2 className="font-semibold text-white">Follow-up Otomatis Bertahap</h2>
@@ -944,10 +944,10 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+      className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
         active
-          ? "bg-primary-500/15 text-primary-300"
-          : "bg-dark-950 text-dark-400 hover:text-white"
+          ? "bg-gradient-to-r from-primary-600 to-blue-600 text-white shadow-lg shadow-blue-500/20"
+          : "bg-dark-950 text-dark-500 hover:bg-dark-800 hover:text-white"
       }`}
     >
       {label}
@@ -981,9 +981,9 @@ function Field({
         min={min}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-dark-700 bg-dark-800 px-4 py-3 text-white focus:border-primary-500/50 focus:outline-none"
+        className="w-full rounded-2xl border border-dark-700 bg-dark-800 px-4 py-3 text-white shadow-sm transition focus:border-primary-500/50 focus:outline-none focus:ring-4 focus:ring-primary-500/10"
       />
-      {helperText ? <p className="mt-2 text-xs text-dark-500">{helperText}</p> : null}
+      {helperText ? <p className="mt-2 text-xs leading-5 text-dark-500">{helperText}</p> : null}
     </div>
   );
 }
@@ -1028,7 +1028,7 @@ function TemplateField({
         rows={rows}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-dark-700 bg-dark-800 px-4 py-3 font-mono text-sm text-white focus:border-primary-500/50 focus:outline-none"
+        className="w-full rounded-2xl border border-dark-700 bg-dark-800 px-4 py-3 font-mono text-sm text-white shadow-sm transition focus:border-primary-500/50 focus:outline-none focus:ring-4 focus:ring-primary-500/10"
       />
     </div>
   );
@@ -1049,11 +1049,11 @@ function ToggleCard({
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dark-700 bg-dark-800 px-4 py-3 ${
+      className={`flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dark-700 bg-dark-800 px-4 py-3 shadow-sm transition hover:border-dark-600 ${
         inline ? "min-w-[280px]" : ""
       }`}
     >
-      <span className="flex items-center gap-3 text-sm text-dark-300">
+      <span className="flex items-center gap-3 text-sm font-medium text-dark-200">
         {icon}
         {label}
       </span>
@@ -1075,10 +1075,10 @@ function ChipButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+      className={`rounded-2xl border px-3 py-2.5 text-xs font-semibold transition ${
         active
-          ? "border-primary-500 bg-primary-500/20 text-primary-300"
-          : "border-dark-700 bg-dark-800 text-dark-400 hover:text-white"
+          ? "border-primary-600 bg-primary-600 text-white shadow-lg shadow-primary-500/20"
+          : "border-dark-700 bg-dark-800 text-dark-500 hover:border-dark-600 hover:text-white"
       }`}
     >
       {label}
@@ -1106,18 +1106,18 @@ function FollowupLevelCard({
   mandatory?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-dark-800 bg-dark-950/50 p-4">
+    <div className="rounded-2xl border border-dark-800 bg-dark-950/50 p-4 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <div className="font-semibold text-white">{title}</div>
-          <div className="mt-1 text-xs text-dark-500">
+          <div className="mt-1 text-xs leading-5 text-dark-500">
             {mandatory
               ? "Level dasar follow-up."
               : "Dikirim setelah level sebelumnya tetap tidak berubah."}
           </div>
         </div>
         {mandatory ? (
-          <span className="rounded-full bg-primary-500/15 px-3 py-1 text-xs font-semibold text-primary-300">
+          <span className="rounded-full bg-primary-600 px-3 py-1 text-xs font-semibold text-white">
             Wajib
           </span>
         ) : (
@@ -1157,7 +1157,7 @@ function StatCard({
   compact?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-dark-800 bg-dark-950/50 p-4">
+    <div className="rounded-2xl border border-dark-800 bg-dark-950/50 p-4 shadow-sm">
       <div className="text-xs uppercase tracking-wide text-dark-500">{label}</div>
       <div
         className={`mt-2 font-semibold text-white ${compact ? "text-sm" : "text-xl"}`}
