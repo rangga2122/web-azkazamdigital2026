@@ -1,0 +1,1 @@
+-- Remote baseline placeholder for existing Supabase migration history.
