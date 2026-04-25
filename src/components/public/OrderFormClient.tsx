@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { formatPrice } from "@/lib/utils";
 import {
   trackConfiguredEvents,
@@ -21,6 +21,7 @@ export function OrderFormClient({
   settings: OrderFormSettings;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState("");
@@ -37,6 +38,7 @@ export function OrderFormClient({
     coupon_code: "",
   });
   const [previewUniqueCode] = useState(() => generatePreviewUniqueCode());
+  const referralCodeFromQuery = searchParams.get("ref")?.trim().toUpperCase() || null;
   const previewDiscount = appliedCoupon?.discount_amount || 0;
   const previewBaseTotal = Math.max(product.price - previewDiscount, 0);
   const previewTotal = previewBaseTotal + previewUniqueCode;
@@ -163,9 +165,7 @@ export function OrderFormClient({
           buyer_whatsapp: form.buyer_whatsapp.trim(),
           notes: null,
           unique_code: previewUniqueCode,
-          coupon_code: settings.checkout_coupon_enabled
-            ? appliedCoupon?.code || null
-            : null,
+          coupon_code: appliedCoupon?.code || referralCodeFromQuery || null,
         }),
       });
 

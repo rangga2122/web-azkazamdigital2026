@@ -28,59 +28,6 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const pathname = request.nextUrl.pathname;
 
-  // Handle referral tracking cookie
-  const ref = request.nextUrl.searchParams.get('ref');
-  if (ref) {
-    supabaseResponse.cookies.set('az_ref', ref, {
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-      path: '/',
-      httpOnly: true,
-      sameSite: 'lax',
-    });
-  }
-
-  if (pathname.startsWith('/produk/')) {
-    const slug = pathname.split('/').filter(Boolean)[1];
-    if (slug) {
-      const { data: product } = await supabase
-        .from('products')
-        .select(`
-          slug,
-          click_target_type,
-          click_target_page:pages!products_click_target_page_id_fkey (
-            slug
-          )
-        `)
-        .eq('slug', slug)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (product) {
-        const targetPage = Array.isArray(product.click_target_page)
-          ? product.click_target_page[0]
-          : product.click_target_page;
-        const targetPath =
-          product.click_target_type === 'cms_page' && targetPage?.slug
-            ? `/${targetPage.slug}`
-            : `/order/${product.slug}`;
-        const targetUrl = new URL(targetPath, request.url);
-        request.nextUrl.searchParams.forEach((value, key) => {
-          targetUrl.searchParams.set(key, value);
-        });
-        const redirectResponse = NextResponse.redirect(targetUrl);
-        if (ref) {
-          redirectResponse.cookies.set('az_ref', ref, {
-            maxAge: 30 * 24 * 60 * 60,
-            path: '/',
-            httpOnly: true,
-            sameSite: 'lax',
-          });
-        }
-        return redirectResponse;
-      }
-    }
-  }
-
   // Admin route protection
   if (pathname.startsWith('/admin')) {
     if (!user) {
@@ -132,6 +79,5 @@ export const config = {
     '/dashboard/:path*',
     '/affiliate/dashboard/:path*',
     '/login',
-    '/((?!_next/static|_next/image|favicon.ico|uploads|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

@@ -4,11 +4,9 @@ import {
   createServiceRoleClient,
 } from "@/lib/supabase/server";
 import {
-  formatWhatsappApiReceiver,
   getWhatsappNotificationConfig,
+  listWhatsappDevices,
   serializeWhatsappNotificationConfig,
-  sendWhatsappImage,
-  sendWhatsappMessage,
   type WhatsappNotificationConfig,
 } from "@/lib/whatsapp-notifications";
 
@@ -34,16 +32,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = (await request.json()) as {
-      number?: string;
+    const body = (await request.json().catch(() => ({}))) as {
       config?: Partial<WhatsappNotificationConfig>;
     };
-    if (!body.number?.trim()) {
-      return NextResponse.json(
-        { error: "Nomor tujuan tes wajib diisi." },
-        { status: 400 }
-      );
-    }
 
     const serviceSupabase = await createServiceRoleClient();
     const { data: settings, error } = await serviceSupabase
@@ -63,6 +54,7 @@ export async function POST(request: NextRequest) {
       settings.social_links as Record<string, unknown> | null,
       settings.whatsapp_number
     );
+
     const config = body.config
       ? {
           ...storedConfig,
@@ -73,48 +65,28 @@ export async function POST(request: NextRequest) {
         }
       : storedConfig;
 
-    const receiver = formatWhatsappApiReceiver(
-      body.number,
-      config.formatNumber,
-      config.provider
-    );
-    if (!receiver) {
+    if (!config.apiUrl.trim() || !config.apiUsername.trim() || !config.apiPassword.trim()) {
       return NextResponse.json(
-        { error: "Nomor tujuan tes tidak valid." },
+        { error: "Konfigurasi API WhatsApp belum lengkap." },
         { status: 400 }
       );
     }
 
-    const message = [
-      `Halo, ini adalah tes notifikasi WhatsApp dari ${settings.site_name || "AzkazamDigital"}.`,
-      "",
-      `Jika pesan ini masuk, berarti integrasi ${config.provider === "instablast" ? "InstaBlast" : "GOWA"} di aplikasi sudah terhubung.`,
-    ].join("\n");
-
-    const messageResult = await sendWhatsappMessage(config, receiver, message);
-    let imageResult: unknown = null;
-
-    if (config.enableImage && config.defaultImageUrl) {
-      const imageUrl = /^https?:\/\//i.test(config.defaultImageUrl)
-        ? config.defaultImageUrl
-        : new URL(config.defaultImageUrl, request.nextUrl.origin).toString();
-
-      imageResult = await sendWhatsappImage(config, receiver, imageUrl, "Tes gambar WhatsApp");
-    }
+    const devices = await listWhatsappDevices(config);
 
     return NextResponse.json({
       success: true,
-      messageResult,
-      imageResult,
+      provider: config.provider,
+      devices,
     });
   } catch (error) {
-    console.error("WhatsApp test route error:", error);
+    console.error("WhatsApp devices route error:", error);
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
-            : "Terjadi kesalahan saat mengirim tes WhatsApp.",
+            : "Terjadi kesalahan saat memuat device WhatsApp.",
       },
       { status: 500 }
     );

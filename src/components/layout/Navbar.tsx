@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
 import { FaBars, FaTimes } from "react-icons/fa";
 import type { SiteNavLink } from "@/lib/site-navigation";
 
@@ -16,7 +15,6 @@ export function Navbar({
   navLinks: SiteNavLink[];
 }) {
   const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const displayName = siteName?.trim() || "AzkazamDigital";
 
   function isLinkActive(href: string) {
@@ -57,8 +55,8 @@ export function Navbar({
                 href={link.href}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   isLinkActive(link.href)
-                    ? "text-primary-400 bg-primary-500/10"
-                    : "text-dark-300 hover:text-white hover:bg-dark-800"
+                    ? "bg-blue-100/80 text-blue-700 ring-1 ring-blue-200"
+                    : "text-slate-700 hover:bg-blue-50 hover:text-blue-700"
                 }`}
               >
                 {link.label}
@@ -69,12 +67,6 @@ export function Navbar({
           {/* CTA */}
           <div className="hidden md:flex items-center gap-3">
             <Link
-              href="/login"
-              className="px-4 py-2 text-sm font-medium text-dark-300 hover:text-white transition-colors"
-            >
-              Masuk
-            </Link>
-            <Link
               href="/produk"
               className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-primary-600 to-accent-600 text-white text-sm font-semibold shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40 transition-all duration-300 hover:scale-105"
             >
@@ -83,53 +75,41 @@ export function Navbar({
           </div>
 
           {/* Mobile toggle */}
-          <button
-            className="md:hidden text-dark-300 hover:text-white p-2"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Buka/tutup menu"
-          >
-            {mobileOpen ? <FaTimes size={20} /> : <FaBars size={20} />}
-          </button>
+          <details className="group relative md:hidden">
+            <summary className="list-none cursor-pointer rounded-xl p-2 text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 [&::-webkit-details-marker]:hidden">
+              <span className="sr-only">Buka/tutup menu</span>
+              <FaBars size={20} className="group-open:hidden" />
+              <FaTimes size={20} className="hidden group-open:block" />
+            </summary>
+
+            <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white/95 shadow-[0_24px_60px_rgba(15,23,42,0.22)] backdrop-blur-xl">
+              <div className="px-3 py-3 space-y-1">
+                {navLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`block rounded-xl px-4 py-3 text-sm font-medium transition-all ${
+                      isLinkActive(link.href)
+                        ? "bg-blue-100/90 text-blue-700 ring-1 ring-blue-200"
+                        : "text-slate-800 hover:bg-blue-50 hover:text-blue-700"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+                <div className="pt-3 border-t border-slate-200">
+                  <Link
+                    href="/produk"
+                    className="block rounded-xl bg-gradient-to-r from-primary-600 to-accent-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-primary-600/20"
+                  >
+                    Lihat Produk
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </details>
         </div>
       </div>
-
-      {/* Mobile Menu */}
-      {mobileOpen && (
-        <div className="md:hidden border-t border-dark-700/50 glass">
-          <div className="px-4 py-4 space-y-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMobileOpen(false)}
-                className={`block px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                  isLinkActive(link.href)
-                    ? "text-primary-400 bg-primary-500/10"
-                    : "text-dark-300 hover:text-white hover:bg-dark-800"
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
-            <div className="pt-3 border-t border-dark-700 flex flex-col gap-2">
-              <Link
-                href="/login"
-                onClick={() => setMobileOpen(false)}
-                className="block px-4 py-3 text-center text-sm font-medium text-dark-300 hover:text-white rounded-lg hover:bg-dark-800"
-              >
-                Masuk
-              </Link>
-              <Link
-                href="/produk"
-                onClick={() => setMobileOpen(false)}
-                className="block px-4 py-3 text-center rounded-lg bg-gradient-to-r from-primary-600 to-accent-600 text-white text-sm font-semibold"
-              >
-                Lihat Produk
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
     </nav>
   );
 }

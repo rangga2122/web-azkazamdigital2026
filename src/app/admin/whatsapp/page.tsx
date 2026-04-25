@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import {
   getWhatsappNotificationConfig,
   serializeWhatsappNotificationConfig,
+  type WhatsappApiProvider,
+  type WhatsappDeviceInfo,
   type WhatsappNotificationConfig,
   type WhatsappStatus,
 } from "@/lib/whatsapp-notifications";
@@ -64,8 +66,10 @@ export default function AdminWhatsappPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
+  const [loadingDevices, setLoadingDevices] = useState(false);
   const [automationBusy, setAutomationBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("notifications");
+  const [devices, setDevices] = useState<WhatsappDeviceInfo[]>([]);
   const [dashboard, setDashboard] = useState<AutomationDashboard>({
     activeBroadcast: null,
     recentBroadcasts: [],
@@ -139,15 +143,17 @@ export default function AdminWhatsappPage() {
     void Promise.resolve().then(load);
   }, [load]);
 
-  const canSendTest = useMemo(() => {
+  const canConnectApi = useMemo(() => {
     return Boolean(
-      config?.enabled &&
-        config.apiUrl.trim() &&
+      config?.apiUrl.trim() &&
         config.apiUsername.trim() &&
-        config.apiPassword.trim() &&
-        testNumber.trim()
+        config.apiPassword.trim()
     );
-  }, [config, testNumber]);
+  }, [config]);
+
+  const canSendTest = useMemo(() => {
+    return Boolean(canConnectApi && testNumber.trim());
+  }, [canConnectApi, testNumber]);
 
   const canRunAutomation = useMemo(() => {
     return Boolean(
@@ -156,6 +162,27 @@ export default function AdminWhatsappPage() {
         config.apiUsername.trim() &&
         config.apiPassword.trim()
     );
+  }, [config]);
+
+  const providerMeta = useMemo(() => {
+    if (!config) return null;
+    return config.provider === "instablast"
+      ? {
+          title: "InstaBlast Compatibility API",
+          usernameLabel: "Email Login API",
+          usernamePlaceholder: "azam@gmail.com",
+          helper:
+            "Untuk InstaBlast, username API harus email user yang login di aplikasi WA Instablast.",
+          videoNote:
+            "API kompatibilitas InstaBlast belum menyediakan endpoint video. Jika video broadcast diaktifkan, sistem akan mengirim caption + link video agar job tetap selesai.",
+        }
+      : {
+          title: "GOWA API",
+          usernameLabel: "Username API",
+          usernamePlaceholder: "username",
+          helper: "Gunakan username/password API dari provider GOWA Anda.",
+          videoNote: "",
+        };
   }, [config]);
 
   async function handleSave() {
@@ -220,6 +247,42 @@ export default function AdminWhatsappPage() {
       toast.error(error instanceof Error ? error.message : "Tes WhatsApp gagal.");
     } finally {
       setSendingTest(false);
+    }
+  }
+
+  async function handleLoadDevices() {
+    if (!config) return;
+
+    setLoadingDevices(true);
+    try {
+      const response = await fetch("/api/admin/whatsapp/devices", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          config: serializeWhatsappNotificationConfig(config),
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        devices?: WhatsappDeviceInfo[];
+      };
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || "Gagal memuat daftar device.");
+      }
+
+      setDevices(payload.devices || []);
+      toast.success("Daftar device berhasil dimuat.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Gagal memuat daftar device."
+      );
+    } finally {
+      setLoadingDevices(false);
     }
   }
 
@@ -310,8 +373,8 @@ export default function AdminWhatsappPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-white">Notifikasi WhatsApp</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-dark-500">
-            Kelola koneksi GOWA, notifikasi order, broadcast pelanggan massal,
-            follow-up otomatis 1/2/3, serta video broadcast dalam satu panel.
+            Kelola koneksi API WhatsApp, notifikasi order, broadcast pelanggan
+            massal, follow-up otomatis 1/2/3, dan media broadcast dalam satu panel.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -359,14 +422,24 @@ export default function AdminWhatsappPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <SelectField
+            label="Provider API WhatsApp"
+            value={config.provider}
+            onChange={(value) => updateField("provider", value as WhatsappApiProvider)}
+            options={[
+              { value: "gowa", label: "GOWA" },
+              { value: "instablast", label: "InstaBlast" },
+            ]}
+            helperText="Pilih provider yang dipakai agar format auth, device, dan media sesuai."
+          />
           <Field
-            label="URL API GOWA"
+            label="URL API WhatsApp"
             value={config.apiUrl}
             onChange={(value) => updateField("apiUrl", value)}
             placeholder="http://localhost:3000"
           />
           <Field
-            label="Device ID GOWA"
+            label="Device ID"
             value={config.deviceId}
             onChange={(value) => updateField("deviceId", value)}
             placeholder="contoh: admin"
@@ -379,10 +452,11 @@ export default function AdminWhatsappPage() {
             placeholder="628xxxxxxx"
           />
           <Field
-            label="Username API"
+            label={providerMeta?.usernameLabel || "Username API"}
             value={config.apiUsername}
             onChange={(value) => updateField("apiUsername", value)}
-            placeholder="username"
+            placeholder={providerMeta?.usernamePlaceholder || "username"}
+            helperText={providerMeta?.helper}
           />
           <PasswordField
             label="Password API"
@@ -393,10 +467,75 @@ export default function AdminWhatsappPage() {
         </div>
 
         <div className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-slate-700 shadow-sm">
-          Untuk deployment Coolify, mode yang paling stabil adalah cron. Set env
-          `WHATSAPP_AUTOMATION_MODE=cron` dan `WHATSAPP_AUTOMATION_CRON_SECRET`,
-          lalu jadwalkan request ke `/api/cron/whatsapp?key=SECRET` tiap 1 menit.
-          Jika Anda ingin tetap punya cadangan proses internal, pakai mode `hybrid`.
+          <div className="font-semibold text-slate-900">
+            Provider aktif: {providerMeta?.title || "-"}
+          </div>
+          <div className="mt-1">
+            Untuk deployment Coolify, mode yang paling stabil adalah cron. Set env
+            `WHATSAPP_AUTOMATION_MODE=cron` dan `WHATSAPP_AUTOMATION_CRON_SECRET`,
+            lalu jadwalkan request ke `/api/cron/whatsapp?key=SECRET` tiap 1 menit.
+            Jika Anda ingin tetap punya cadangan proses internal, pakai mode `hybrid`.
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-dark-800 bg-dark-950/50 p-4">
+          <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-white">Daftar Device Provider</div>
+              <div className="mt-1 text-xs text-dark-500">
+                Muat device dari {config.provider === "instablast" ? "InstaBlast" : "GOWA"} lalu klik
+                &quot;Pakai&quot; untuk mengisi `device_id` otomatis.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleLoadDevices}
+              disabled={!canConnectApi || loadingDevices}
+              className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-slate-700 to-slate-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FaSyncAlt size={14} />
+              {loadingDevices ? "Memuat..." : "Muat Device"}
+            </button>
+          </div>
+
+          {devices.length > 0 ? (
+            <div className="overflow-hidden rounded-xl border border-dark-800">
+              <div className="grid grid-cols-[1fr_1fr_0.8fr_0.8fr_0.6fr] bg-dark-950/70 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-dark-500">
+                <div>Device</div>
+                <div>Nomor</div>
+                <div>Status</div>
+                <div>Koneksi</div>
+                <div>Aksi</div>
+              </div>
+              {devices.map((device) => (
+                <div
+                  key={device.id}
+                  className="grid grid-cols-[1fr_1fr_0.8fr_0.8fr_0.6fr] items-center border-t border-dark-800 px-4 py-3 text-sm text-dark-300"
+                >
+                  <div className="truncate">
+                    <div className="font-medium text-white">{device.displayName || device.id}</div>
+                    <div className="text-xs text-dark-500">{device.deviceId}</div>
+                  </div>
+                  <div>{device.phone || "-"}</div>
+                  <div>{device.state || "-"}</div>
+                  <div>{device.isLoggedIn ? "Logged in" : device.isConnected ? "Connected" : "Offline"}</div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => updateField("deviceId", device.id)}
+                      className="rounded-xl border border-primary-600/40 bg-primary-600/10 px-3 py-2 text-xs font-semibold text-primary-200 transition hover:bg-primary-600/20"
+                    >
+                      Pakai
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-dark-700 bg-dark-950/30 px-4 py-5 text-sm text-dark-400">
+              Belum ada device yang dimuat.
+            </div>
+          )}
         </div>
       </section>
 
@@ -508,6 +647,10 @@ export default function AdminWhatsappPage() {
               <FaWhatsapp className="text-green-400" />
               <h2 className="font-semibold text-white">Tes Kirim</h2>
             </div>
+            <p className="mb-4 text-sm text-dark-400">
+              Tes kirim akan memakai provider {providerMeta?.title || "-"} dan device
+              yang sedang dipilih.
+            </p>
 
             <div className="grid grid-cols-1 gap-5 md:grid-cols-[1fr_auto]">
               <Field
@@ -712,6 +855,11 @@ export default function AdminWhatsappPage() {
                 placeholder="https://example.com/promo.mp4"
               />
             </div>
+            {config.provider === "instablast" ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                {providerMeta?.videoNote}
+              </div>
+            ) : null}
           </section>
 
           <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
@@ -983,6 +1131,38 @@ function Field({
         placeholder={placeholder}
         className="w-full rounded-2xl border border-dark-700 bg-dark-800 px-4 py-3 text-white shadow-sm transition focus:border-primary-500/50 focus:outline-none focus:ring-4 focus:ring-primary-500/10"
       />
+      {helperText ? <p className="mt-2 text-xs leading-5 text-dark-500">{helperText}</p> : null}
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  helperText,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  helperText?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-medium text-dark-300">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border border-dark-700 bg-dark-800 px-4 py-3 text-white shadow-sm transition focus:border-primary-500/50 focus:outline-none focus:ring-4 focus:ring-primary-500/10"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
       {helperText ? <p className="mt-2 text-xs leading-5 text-dark-500">{helperText}</p> : null}
     </div>
   );

@@ -1,7 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
   buildWhatsappOrderContext,
-  formatWhatsappPhone,
+  formatWhatsappApiReceiver,
   getWhatsappNotificationConfig,
   processWhatsappSpintax,
   resolveBroadcastMediaUrl,
@@ -571,7 +571,11 @@ function buildUniqueBroadcastRecipients(
   >();
 
   for (const order of orders) {
-    const phone = formatWhatsappPhone(order.buyer_whatsapp || "", config.formatNumber);
+    const phone = formatWhatsappApiReceiver(
+      order.buyer_whatsapp || "",
+      config.formatNumber,
+      config.provider
+    );
     if (!phone || uniqueCustomers.has(phone)) {
       continue;
     }
@@ -742,7 +746,11 @@ async function processDueFollowupJobs(
       }
     }
 
-    const receiver = formatWhatsappPhone(order.buyer_whatsapp, config.formatNumber);
+    const receiver = formatWhatsappApiReceiver(
+      order.buyer_whatsapp,
+      config.formatNumber,
+      config.provider
+    );
     if (!receiver) {
       await markFollowupCancelled(
         supabase,

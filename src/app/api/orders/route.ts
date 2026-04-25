@@ -15,6 +15,7 @@ import {
   productImageFromProduct,
   sendOrderCreatedWhatsappNotifications,
 } from "@/lib/whatsapp-notifications";
+import { syncOrderLeadToLicenseManager } from "@/lib/license-order-sync";
 
 type CreateOrderPayload = {
   product_id?: string;
@@ -322,6 +323,23 @@ export async function POST(request: NextRequest) {
       ensureWhatsappAutomationLoop();
     } catch (error) {
       console.error("Schedule WhatsApp followups error:", error);
+    }
+
+    try {
+      await syncOrderLeadToLicenseManager({
+        orderId: order.id,
+        orderCode: order.order_code,
+        buyerName: buyer_name,
+        buyerEmail: normalizedBuyerEmail,
+        buyerWhatsapp: buyer_whatsapp,
+        productName: product.title,
+        subtotalAmount: subtotal,
+        uniqueCode,
+        totalAmount,
+        status: order.status,
+      });
+    } catch (error) {
+      console.error("Sync order lead to license manager error:", error);
     }
 
     return NextResponse.json({

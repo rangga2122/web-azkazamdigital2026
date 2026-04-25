@@ -10,8 +10,21 @@ export type WhatsappBroadcastStatus =
   | "stopped"
   | "failed";
 
+export type WhatsappApiProvider = "gowa" | "instablast";
+
+export type WhatsappDeviceInfo = {
+  id: string;
+  deviceId: string;
+  displayName: string;
+  phone: string;
+  state: string;
+  isConnected: boolean;
+  isLoggedIn: boolean;
+};
+
 export type WhatsappNotificationConfig = {
   enabled: boolean;
+  provider: WhatsappApiProvider;
   apiUrl: string;
   apiUsername: string;
   apiPassword: string;
@@ -98,6 +111,7 @@ const DEFAULT_FOLLOWUP_TEMPLATE_3 =
 
 const DEFAULT_CONFIG: WhatsappNotificationConfig = {
   enabled: false,
+  provider: "gowa",
   apiUrl: "http://localhost:3000",
   apiUsername: "",
   apiPassword: "",
@@ -145,6 +159,7 @@ export function getWhatsappNotificationConfig(
 
   const config: WhatsappNotificationConfig = {
     enabled: toBoolean(raw.enabled, DEFAULT_CONFIG.enabled),
+    provider: toProvider(raw.provider, DEFAULT_CONFIG.provider),
     apiUrl: toString(raw.apiUrl, DEFAULT_CONFIG.apiUrl),
     apiUsername: toString(raw.apiUsername, DEFAULT_CONFIG.apiUsername),
     apiPassword: toString(raw.apiPassword, DEFAULT_CONFIG.apiPassword),
@@ -260,6 +275,7 @@ export function serializeWhatsappNotificationConfig(
 
   return {
     enabled: config.enabled,
+    provider: config.provider,
     apiUrl: config.apiUrl.trim(),
     apiUsername: config.apiUsername.trim(),
     apiPassword: config.apiPassword,
@@ -311,17 +327,19 @@ export function formatWhatsappPhone(value: string, autoFormat = true) {
   const digits = value.replace(/\D/g, "");
   if (!digits) return "";
 
-  if (!autoFormat) {
-    return digits.endsWith("@s.whatsapp.net")
-      ? digits
-      : `${digits}@s.whatsapp.net`;
-  }
+  return normalizeWhatsappPhone(digits, autoFormat);
+}
 
-  let normalized = digits;
-  if (normalized.startsWith("0")) {
-    normalized = `62${normalized.slice(1)}`;
-  } else if (normalized.startsWith("8")) {
-    normalized = `62${normalized}`;
+export function formatWhatsappApiReceiver(
+  value: string,
+  autoFormat = true,
+  provider: WhatsappApiProvider = "gowa"
+) {
+  const normalized = normalizeWhatsappPhone(value, autoFormat);
+  if (!normalized) return "";
+
+  if (provider === "instablast") {
+    return normalized;
   }
 
   return normalized.endsWith("@s.whatsapp.net")
@@ -378,19 +396,19 @@ export async function sendWhatsappMessage(
   message: string
 ) {
   if (!config.apiUrl || !config.apiUsername || !config.apiPassword || !receiver) {
-    throw new Error("Konfigurasi GOWA belum lengkap.");
+    throw new Error("Konfigurasi API WhatsApp belum lengkap.");
   }
 
   const deviceId = await resolveDeviceId(config);
-  const response = await fetch(buildGowaUrl(config, "/send/message", deviceId), {
+  const response = await fetch(buildProviderUrl(config, "/send/message", deviceId), {
     method: "POST",
-    headers: buildGowaHeaders(config, deviceId, {
+    headers: buildProviderHeaders(config, deviceId, {
       "Content-Type": "application/json",
     }),
     body: JSON.stringify({
       phone: receiver,
       message,
-      is_forwarded: false,
+      ...(config.provider === "gowa" ? { is_forwarded: false } : {}),
     }),
   });
 
@@ -399,7 +417,7 @@ export async function sendWhatsappMessage(
     throw new Error(text || "Gagal mengirim pesan WhatsApp.");
   }
 
-  return response.json();
+  return parseProviderResponse(response);
 }
 
 export async function sendWhatsappImage(
@@ -409,7 +427,30 @@ export async function sendWhatsappImage(
   caption = ""
 ) {
   if (!config.apiUrl || !config.apiUsername || !config.apiPassword || !receiver || !imageUrl) {
-    throw new Error("Konfigurasi GOWA atau gambar belum lengkap.");
+    throw new Error("Konfigurasi API WhatsApp atau gambar belum lengkap.");
+  }
+
+  if (config.provider === "instablast") {
+    const inlineImage = await loadRemoteMediaAsDataUrl(imageUrl, "image/");
+    const deviceId = await resolveDeviceId(config);
+    const response = await fetch(buildProviderUrl(config, "/send/image", deviceId), {
+      method: "POST",
+      headers: buildProviderHeaders(config, deviceId, {
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify({
+        phone: receiver,
+        caption,
+        image: inlineImage,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || "Gagal mengirim gambar WhatsApp.");
+    }
+
+    return parseProviderResponse(response);
   }
 
   const form = new FormData();
@@ -421,9 +462,9 @@ export async function sendWhatsappImage(
   form.append("is_forwarded", "false");
 
   const deviceId = await resolveDeviceId(config);
-  const response = await fetch(buildGowaUrl(config, "/send/image", deviceId), {
+  const response = await fetch(buildProviderUrl(config, "/send/image", deviceId), {
     method: "POST",
-    headers: buildGowaHeaders(config, deviceId),
+    headers: buildProviderHeaders(config, deviceId),
     body: form,
   });
 
@@ -432,7 +473,7 @@ export async function sendWhatsappImage(
     throw new Error(text || "Gagal mengirim gambar WhatsApp.");
   }
 
-  return response.json();
+  return parseProviderResponse(response);
 }
 
 export async function sendWhatsappVideo(
@@ -442,7 +483,16 @@ export async function sendWhatsappVideo(
   caption = ""
 ) {
   if (!config.apiUrl || !config.apiUsername || !config.apiPassword || !receiver || !videoUrl) {
-    throw new Error("Konfigurasi GOWA atau video belum lengkap.");
+    throw new Error("Konfigurasi API WhatsApp atau video belum lengkap.");
+  }
+
+  if (config.provider === "instablast") {
+    const fallbackMessage = [caption.trim(), videoUrl.trim()].filter(Boolean).join("\n");
+    return sendWhatsappMessage(
+      config,
+      receiver,
+      fallbackMessage || `Video broadcast: ${videoUrl.trim()}`
+    );
   }
 
   const form = new FormData();
@@ -454,9 +504,9 @@ export async function sendWhatsappVideo(
   form.append("is_forwarded", "false");
 
   const deviceId = await resolveDeviceId(config);
-  const response = await fetch(buildGowaUrl(config, "/send/video", deviceId), {
+  const response = await fetch(buildProviderUrl(config, "/send/video", deviceId), {
     method: "POST",
-    headers: buildGowaHeaders(config, deviceId),
+    headers: buildProviderHeaders(config, deviceId),
     body: form,
   });
 
@@ -465,7 +515,7 @@ export async function sendWhatsappVideo(
     throw new Error(text || "Gagal mengirim video WhatsApp.");
   }
 
-  return response.json();
+  return parseProviderResponse(response);
 }
 
 export async function sendOrderCreatedWhatsappNotifications(args: {
@@ -478,8 +528,16 @@ export async function sendOrderCreatedWhatsappNotifications(args: {
 
   let adminSent = false;
   let customerSent = false;
-  const customerReceiver = formatWhatsappPhone(order.customerPhone, config.formatNumber);
-  const adminReceiver = formatWhatsappPhone(config.adminNumber, config.formatNumber);
+  const customerReceiver = formatWhatsappApiReceiver(
+    order.customerPhone,
+    config.formatNumber,
+    config.provider
+  );
+  const adminReceiver = formatWhatsappApiReceiver(
+    config.adminNumber,
+    config.formatNumber,
+    config.provider
+  );
   const imageUrl = pickNotificationImage(
     order.productImageUrl || null,
     config.defaultImageUrl,
@@ -523,7 +581,11 @@ export async function sendOrderStatusWhatsappNotification(args: {
     return { customerSent: false };
   }
 
-  const receiver = formatWhatsappPhone(order.customerPhone, config.formatNumber);
+  const receiver = formatWhatsappApiReceiver(
+    order.customerPhone,
+    config.formatNumber,
+    config.provider
+  );
   if (!receiver) return { customerSent: false };
 
   const message = resolveWhatsappTemplate(config.statusTemplate, order);
@@ -650,7 +712,7 @@ function stripTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
-function buildGowaHeaders(
+function buildProviderHeaders(
   config: WhatsappNotificationConfig,
   deviceId: string,
   extraHeaders: Record<string, string> = {}
@@ -664,7 +726,7 @@ function buildGowaHeaders(
   };
 }
 
-function buildGowaUrl(
+function buildProviderUrl(
   config: WhatsappNotificationConfig,
   path: string,
   deviceId: string
@@ -682,19 +744,20 @@ async function resolveDeviceId(config: WhatsappNotificationConfig) {
 
   const devices = await listWhatsappDevices(config);
   const activeDevice =
-    devices.find((device) => device.state === "logged_in" && device.id) ||
+    devices.find((device) => device.isLoggedIn && device.id) ||
+    devices.find((device) => device.isConnected && device.id) ||
     devices.find((device) => device.id);
 
   if (!activeDevice?.id) {
     throw new Error(
-      "Device ID GOWA belum ditemukan. Pastikan perangkat WhatsApp sudah login."
+      "Device ID belum ditemukan. Pastikan perangkat WhatsApp sudah login."
     );
   }
 
   return activeDevice.id;
 }
 
-async function listWhatsappDevices(config: WhatsappNotificationConfig) {
+export async function listWhatsappDevices(config: WhatsappNotificationConfig) {
   const response = await fetch(`${stripTrailingSlash(config.apiUrl)}/devices`, {
     method: "GET",
     headers: {
@@ -706,14 +769,51 @@ async function listWhatsappDevices(config: WhatsappNotificationConfig) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || "Gagal mengambil daftar device GOWA.");
+    throw new Error(text || "Gagal mengambil daftar device WhatsApp.");
   }
 
   const payload = (await response.json()) as {
-    results?: Array<{ id?: string; state?: string }>;
+    results?: Array<{
+      id?: string;
+      device_id?: string;
+      display_name?: string;
+      phone?: string;
+      state?: string;
+      is_connected?: boolean;
+      is_logged_in?: boolean;
+    }>;
   };
 
-  return Array.isArray(payload.results) ? payload.results : [];
+  if (!Array.isArray(payload.results)) {
+    return [] as WhatsappDeviceInfo[];
+  }
+
+  return payload.results
+    .map((device) => {
+      const id = toString(device.id, toString(device.device_id, "")).trim();
+      if (!id) return null;
+
+      const state = toString(device.state, "").trim().toLowerCase();
+      const isLoggedIn =
+        typeof device.is_logged_in === "boolean"
+          ? device.is_logged_in
+          : state === "connected" || state === "logged_in";
+      const isConnected =
+        typeof device.is_connected === "boolean"
+          ? device.is_connected
+          : isLoggedIn || state === "connecting";
+
+      return {
+        id,
+        deviceId: toString(device.device_id, id),
+        displayName: toString(device.display_name, id),
+        phone: toString(device.phone, ""),
+        state: state || (isLoggedIn ? "connected" : isConnected ? "connecting" : "disconnected"),
+        isConnected,
+        isLoggedIn,
+      } satisfies WhatsappDeviceInfo;
+    })
+    .filter((device): device is WhatsappDeviceInfo => Boolean(device));
 }
 
 function normalizeStatuses(
@@ -741,6 +841,13 @@ function toString(value: unknown, fallback: string) {
   return typeof value === "string" ? value : fallback;
 }
 
+function toProvider(
+  value: unknown,
+  fallback: WhatsappApiProvider
+): WhatsappApiProvider {
+  return value === "instablast" || value === "gowa" ? value : fallback;
+}
+
 function toPositiveInt(value: unknown, fallback: number) {
   const parsed =
     typeof value === "number"
@@ -758,4 +865,50 @@ function toPositiveInt(value: unknown, fallback: number) {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeWhatsappPhone(value: string, autoFormat: boolean) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+
+  if (!autoFormat) {
+    return digits;
+  }
+
+  if (digits.startsWith("0")) {
+    return `62${digits.slice(1)}`;
+  }
+
+  if (digits.startsWith("8")) {
+    return `62${digits}`;
+  }
+
+  return digits;
+}
+
+async function loadRemoteMediaAsDataUrl(url: string, expectedMimePrefix: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Gagal mengambil media remote: ${response.status}`);
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType && !contentType.startsWith(expectedMimePrefix)) {
+    throw new Error(`Media remote tidak sesuai. Diharapkan ${expectedMimePrefix}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const mimeType =
+    contentType || (expectedMimePrefix === "image/" ? "image/jpeg" : "application/octet-stream");
+
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+}
+
+async function parseProviderResponse(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  return response.text();
 }
