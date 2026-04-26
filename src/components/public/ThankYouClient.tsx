@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { trackConfiguredEvents } from "@/components/tracking/PixelEvents";
+import {
+  trackConfiguredEvents,
+  trackPageView,
+} from "@/components/tracking/PixelEvents";
 import type { Order } from "@/types";
 
 export function ThankYouClient({ order }: { order: Order }) {
   useEffect(() => {
+    trackPageView({ type: "thankyou", productId: order.product_id });
     trackConfiguredEvents(
       { type: "thankyou", productId: order.product_id },
       {

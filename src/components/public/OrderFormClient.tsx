@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatPrice } from "@/lib/utils";
 import {
+  trackPageView,
   trackConfiguredEvents,
 } from "@/components/tracking/PixelEvents";
 import toast from "react-hot-toast";
@@ -44,6 +45,7 @@ export function OrderFormClient({
   const previewTotal = previewBaseTotal + previewUniqueCode;
 
   useEffect(() => {
+    trackPageView({ type: "checkout", productId: product.id });
     trackConfiguredEvents(
       { type: "checkout", productId: product.id },
       {
