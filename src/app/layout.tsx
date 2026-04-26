@@ -48,7 +48,7 @@ type RootSiteSettings = {
   themeMode: "dark" | "light";
 };
 
-const DEFAULT_FAVICON = "/uploads/general/4a802df8-7864-46ed-9145-8bc60913709c.png";
+const DEFAULT_FAVICON = "/icon.png";
 
 async function getRootSiteSettings(): Promise<RootSiteSettings> {
   try {
