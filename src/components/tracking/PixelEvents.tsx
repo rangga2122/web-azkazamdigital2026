@@ -32,6 +32,26 @@ type PendingPixelEvent = {
   target?: TrackingTarget;
 };
 
+function dispatchToPixels(
+  config: TrackingConfig,
+  pixels: ReturnType<typeof getActivePixelsForEvent>,
+  eventName: string,
+  params?: Record<string, unknown>
+) {
+  const activePixels = config.pixels.filter(
+    (pixel) => pixel.active && pixel.pixelId.trim()
+  );
+
+  if (activePixels.length === 1 && pixels.length === 1) {
+    window.fbq?.("track", eventName, params);
+    return;
+  }
+
+  pixels.forEach((pixel) => {
+    window.fbq?.("trackSingle", pixel.pixelId, eventName, params);
+  });
+}
+
 function dispatchEvent(
   eventName: string,
   params?: Record<string, unknown>,
@@ -59,9 +79,7 @@ function dispatchEvent(
     [eventSignature]: now,
   };
 
-  pixels.forEach((pixel) => {
-    window.fbq?.("trackSingle", pixel.pixelId, eventName, params);
-  });
+  dispatchToPixels(config, pixels, eventName, params);
 
   return true;
 }

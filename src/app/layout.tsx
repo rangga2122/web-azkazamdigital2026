@@ -44,15 +44,18 @@ type RootSiteSettings = {
   siteName: string;
   description: string;
   faviconUrl: string | null;
+  logoUrl: string | null;
   themeMode: "dark" | "light";
 };
+
+const DEFAULT_FAVICON = "/uploads/general/4a802df8-7864-46ed-9145-8bc60913709c.png";
 
 async function getRootSiteSettings(): Promise<RootSiteSettings> {
   try {
     const supabase = await createServiceRoleClient();
     const { data } = await supabase
       .from("site_settings")
-      .select("site_name, description, favicon_url, social_links")
+      .select("site_name, description, favicon_url, logo_url, social_links")
       .limit(1)
       .single();
     const themeMode = (data?.social_links as Record<string, string> | null)?.theme_mode;
@@ -63,6 +66,7 @@ async function getRootSiteSettings(): Promise<RootSiteSettings> {
         data?.description ||
         "Platform penjualan produk digital premium dengan sistem afiliasi lengkap. Template, ebook, tools, dan kursus online berkualitas tinggi.",
       faviconUrl: data?.favicon_url || null,
+      logoUrl: data?.logo_url || null,
       themeMode: themeMode === "light" ? "light" : "dark",
     };
   } catch {
@@ -71,6 +75,7 @@ async function getRootSiteSettings(): Promise<RootSiteSettings> {
       description:
         "Platform penjualan produk digital premium dengan sistem afiliasi lengkap. Template, ebook, tools, dan kursus online berkualitas tinggi.",
       faviconUrl: null,
+      logoUrl: null,
       themeMode: "dark",
     };
   }
@@ -78,6 +83,7 @@ async function getRootSiteSettings(): Promise<RootSiteSettings> {
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getRootSiteSettings();
+  const iconUrl = settings.faviconUrl || settings.logoUrl || DEFAULT_FAVICON;
 
   return {
     title: {
@@ -92,13 +98,11 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: settings.siteName,
     },
     robots: fallbackMetadata.robots,
-    icons: settings.faviconUrl
-      ? {
-          icon: settings.faviconUrl,
-          shortcut: settings.faviconUrl,
-          apple: settings.faviconUrl,
-        }
-      : undefined,
+    icons: {
+      icon: iconUrl,
+      shortcut: iconUrl,
+      apple: iconUrl,
+    },
   };
 }
 

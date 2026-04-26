@@ -46,7 +46,17 @@ export function FacebookPixelRuntime({ config }: { config: TrackingConfig }) {
 
     if (target.type === "checkout" || target.type === "thankyou") return;
 
-    getActivePixelsForEvent(normalized, "PageView", target).forEach((pixel) => {
+    const pixels = getActivePixelsForEvent(normalized, "PageView", target);
+    const activePixels = normalized.pixels.filter(
+      (pixel) => pixel.active && pixel.pixelId.trim()
+    );
+
+    if (activePixels.length === 1 && pixels.length === 1) {
+      window.fbq?.("track", "PageView");
+      return;
+    }
+
+    pixels.forEach((pixel) => {
       window.fbq?.("trackSingle", pixel.pixelId, "PageView");
     });
   }, [config, pathname]);
