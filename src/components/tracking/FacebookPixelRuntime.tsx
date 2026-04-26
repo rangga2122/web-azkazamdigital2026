@@ -44,8 +44,6 @@ export function FacebookPixelRuntime({ config }: { config: TrackingConfig }) {
     const normalized = window.__azTrackingConfig || normalizeTrackingConfig(config);
     const target = routeTargetFromPathname(pathname || "/", normalized);
 
-    if (target.type === "checkout" || target.type === "thankyou") return;
-
     getActivePixelsForEvent(normalized, "PageView", target).forEach((pixel) => {
       window.fbq?.("trackSingle", pixel.pixelId, "PageView");
     });

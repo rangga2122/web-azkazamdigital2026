@@ -31,6 +31,9 @@ export async function FacebookPixelScript() {
   const hasActivePixels = config.pixels.some(
     (pixel) => pixel.active && pixel.pixelId.trim()
   );
+  const activePixelIds = config.pixels
+    .filter((pixel) => pixel.active && pixel.pixelId.trim())
+    .map((pixel) => pixel.pixelId.trim());
 
   if (!pixelEnabled || !hasActivePixels) return null;
 
@@ -47,6 +50,20 @@ export async function FacebookPixelScript() {
             t.src=v;s=b.getElementsByTagName(e)[0];
             s.parentNode.insertBefore(t,s)}(window, document,'script',
             'https://connect.facebook.net/en_US/fbevents.js');
+          `,
+        }}
+      />
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            window.__azInitializedPixelIds = window.__azInitializedPixelIds || [];
+            ${JSON.stringify(activePixelIds)}.forEach(function(pixelId) {
+              if (!pixelId) return;
+              if (window.__azInitializedPixelIds.indexOf(pixelId) === -1) {
+                fbq('init', pixelId);
+                window.__azInitializedPixelIds.push(pixelId);
+              }
+            });
           `,
         }}
       />
