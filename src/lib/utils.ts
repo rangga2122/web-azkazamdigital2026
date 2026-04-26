@@ -1,35 +1,116 @@
-import DOMPurify from 'isomorphic-dompurify';
+const ALLOWED_HTML_TAGS = new Set([
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'p', 'br', 'hr',
+  'ul', 'ol', 'li',
+  'a', 'strong', 'em', 'b', 'i', 'u', 's',
+  'blockquote', 'pre', 'code',
+  'img', 'figure', 'figcaption',
+  'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'div', 'span', 'section', 'article', 'header', 'footer', 'nav', 'main',
+  'button', 'form', 'label', 'input', 'textarea', 'select', 'option',
+  'video', 'source', 'iframe',
+  'svg', 'path', 'g', 'defs', 'clipPath', 'linearGradient', 'stop', 'circle', 'rect', 'polygon', 'polyline', 'line',
+  'style', 'html', 'head', 'body', 'title', 'meta', 'link',
+]);
+
+const ALLOWED_ATTRS = new Set([
+  'href', 'target', 'rel', 'src', 'alt', 'title',
+  'class', 'id', 'style',
+  'width', 'height',
+  'colspan', 'rowspan',
+  'type', 'name', 'value', 'placeholder', 'checked', 'selected', 'disabled',
+  'controls', 'autoplay', 'loop', 'muted',
+  'frameborder', 'allowfullscreen', 'allow',
+  'charset', 'content', 'media', 'crossorigin', 'as',
+  'viewbox', 'xmlns', 'fill', 'stroke', 'stroke-width', 'd', 'x', 'y', 'x1', 'x2', 'y1', 'y2',
+  'cx', 'cy', 'r', 'points', 'offset', 'stop-color', 'stop-opacity', 'preserveaspectratio',
+]);
+
+function removeUnsafeBlocks(html: string) {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<script\b[^>]*\/?>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+}
+
+function cleanTagAttributes(rawAttributes: string) {
+  const sanitizedParts: string[] = [];
+  const attrRegex =
+    /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+  for (const match of rawAttributes.matchAll(attrRegex)) {
+    const rawName = match[1];
+    const name = rawName.toLowerCase();
+
+    if (!name || name.startsWith('on')) continue;
+    if (!ALLOWED_ATTRS.has(name) && !name.startsWith('data-')) continue;
+
+    const rawValue = match[2] ?? match[3] ?? match[4] ?? '';
+    const normalizedValue = rawValue.trim();
+    const lowerValue = normalizedValue.toLowerCase();
+
+    if (
+      (name === 'href' || name === 'src' || name === 'action') &&
+      (lowerValue.startsWith('javascript:') ||
+        lowerValue.startsWith('vbscript:') ||
+        lowerValue.startsWith('data:text/html'))
+    ) {
+      continue;
+    }
+
+    if (name === 'style') {
+      const safeStyle = normalizedValue
+        .replace(/expression\s*\([^)]*\)/gi, '')
+        .replace(/url\s*\(\s*['"]?\s*javascript:[^)]*\)/gi, '')
+        .trim();
+
+      if (!safeStyle) continue;
+      sanitizedParts.push(`${rawName}="${escapeHtmlAttr(safeStyle)}"`);
+      continue;
+    }
+
+    if (match[2] !== undefined || match[3] !== undefined || match[4] !== undefined) {
+      sanitizedParts.push(`${rawName}="${escapeHtmlAttr(normalizedValue)}"`);
+    } else {
+      sanitizedParts.push(rawName);
+    }
+  }
+
+  return sanitizedParts.length ? ` ${sanitizedParts.join(' ')}` : '';
+}
+
+function sanitizeAllowedMarkup(html: string) {
+  const withoutUnsafeBlocks = removeUnsafeBlocks(html);
+
+  return withoutUnsafeBlocks.replace(
+    /<\/?([a-zA-Z][a-zA-Z0-9:_-]*)([^>]*)>/g,
+    (fullMatch, rawTagName: string, rawAttributes: string) => {
+      const tagName = rawTagName.toLowerCase();
+      if (!ALLOWED_HTML_TAGS.has(tagName)) return '';
+
+      const isClosing = fullMatch.startsWith('</');
+      if (isClosing) return `</${rawTagName}>`;
+
+      const selfClosing = /\/\s*>$/.test(fullMatch);
+      const safeAttributes = cleanTagAttributes(rawAttributes || '');
+      return `<${rawTagName}${safeAttributes}${selfClosing ? ' /' : ''}>`;
+    }
+  );
+}
+
+function escapeHtmlAttr(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 /**
  * Sanitize HTML to prevent XSS while allowing safe HTML rendering
  */
 export function sanitizeHtml(html: string): string {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'p', 'br', 'hr',
-      'ul', 'ol', 'li',
-      'a', 'strong', 'em', 'b', 'i', 'u', 's',
-      'blockquote', 'pre', 'code',
-      'img', 'figure', 'figcaption',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'div', 'span', 'section', 'article', 'header', 'footer', 'nav',
-      'video', 'source', 'iframe',
-      'svg', 'path', 'g', 'defs', 'clipPath', 'linearGradient', 'stop', 'circle', 'rect', 'polygon', 'polyline', 'line',
-      'style',
-    ],
-    ALLOWED_ATTR: [
-      'href', 'target', 'rel', 'src', 'alt', 'title',
-      'class', 'id', 'style',
-      'width', 'height',
-      'colspan', 'rowspan',
-      'type', 'controls', 'autoplay', 'loop', 'muted',
-      'frameborder', 'allowfullscreen', 'allow',
-      'viewBox', 'xmlns', 'fill', 'stroke', 'stroke-width', 'd', 'x', 'y', 'x1', 'x2', 'y1', 'y2',
-      'cx', 'cy', 'r', 'points', 'offset', 'stop-color', 'stop-opacity', 'preserveAspectRatio',
-    ],
-    ALLOW_DATA_ATTR: false,
-  });
+  return sanitizeAllowedMarkup(html);
 }
 
 export function isStandaloneHtml(html: string): boolean {
@@ -37,37 +118,7 @@ export function isStandaloneHtml(html: string): boolean {
 }
 
 export function sanitizeHtmlDocument(html: string): string {
-  const sanitized = DOMPurify.sanitize(html, {
-    WHOLE_DOCUMENT: true,
-    ALLOWED_TAGS: [
-      'html', 'head', 'body', 'title', 'meta', 'link',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'p', 'br', 'hr',
-      'ul', 'ol', 'li',
-      'a', 'strong', 'em', 'b', 'i', 'u', 's',
-      'blockquote', 'pre', 'code',
-      'img', 'figure', 'figcaption',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'div', 'span', 'section', 'article', 'header', 'footer', 'nav', 'main',
-      'button', 'form', 'label', 'input', 'textarea', 'select', 'option',
-      'video', 'source', 'iframe',
-      'svg', 'path', 'g', 'defs', 'clipPath', 'linearGradient', 'stop', 'circle', 'rect', 'polygon', 'polyline', 'line',
-      'style',
-    ],
-    ALLOWED_ATTR: [
-      'href', 'target', 'rel', 'src', 'alt', 'title',
-      'class', 'id', 'style',
-      'width', 'height',
-      'colspan', 'rowspan',
-      'type', 'name', 'value', 'placeholder', 'checked', 'selected', 'disabled',
-      'controls', 'autoplay', 'loop', 'muted',
-      'frameborder', 'allowfullscreen', 'allow',
-      'charset', 'content', 'media',
-      'viewBox', 'xmlns', 'fill', 'stroke', 'stroke-width', 'd', 'x', 'y', 'x1', 'x2', 'y1', 'y2',
-      'cx', 'cy', 'r', 'points', 'offset', 'stop-color', 'stop-opacity', 'preserveAspectRatio',
-    ],
-    ALLOW_DATA_ATTR: true,
-  });
+  const sanitized = sanitizeAllowedMarkup(html);
 
   if (/<html[\s>]/i.test(sanitized)) return sanitized;
 
@@ -86,16 +137,12 @@ export function prepareEmbeddedHtmlDocument(
   const styles = Array.from(html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi))
     .map((match) => match[1])
     .join("\n");
-  const headHtml = DOMPurify.sanitize(
+  const headHtml = sanitizeAllowedMarkup(
     Array.from(html.matchAll(/<link\b[^>]*>/gi))
       .map((match) => match[0])
       .filter((tag) => /rel=["']?(stylesheet|preconnect|preload)/i.test(tag))
       .map((tag) => tag.replace(/\smedia=["']print["']/i, ' media="all"'))
-      .join("\n"),
-    {
-      ALLOWED_TAGS: ['link'],
-      ALLOWED_ATTR: ['href', 'rel', 'media', 'crossorigin', 'as', 'type'],
-    }
+      .join("\n")
   );
   const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
   const rawBody = bodyMatch ? bodyMatch[1] : html;
@@ -103,33 +150,7 @@ export function prepareEmbeddedHtmlDocument(
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<link\b[^>]*>/gi, "");
-  const bodyHtml = DOMPurify.sanitize(bodyWithoutHeadAssets, {
-    ALLOWED_TAGS: [
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'p', 'br', 'hr',
-      'ul', 'ol', 'li',
-      'a', 'strong', 'em', 'b', 'i', 'u', 's',
-      'blockquote', 'pre', 'code',
-      'img', 'figure', 'figcaption',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'div', 'span', 'section', 'article', 'header', 'footer', 'nav', 'main',
-      'button', 'form', 'label', 'input', 'textarea', 'select', 'option',
-      'video', 'source', 'iframe',
-      'svg', 'path', 'g', 'defs', 'clipPath', 'linearGradient', 'stop', 'circle', 'rect', 'polygon', 'polyline', 'line',
-    ],
-    ALLOWED_ATTR: [
-      'href', 'target', 'rel', 'src', 'alt', 'title',
-      'class', 'id', 'style',
-      'width', 'height',
-      'colspan', 'rowspan',
-      'type', 'name', 'value', 'placeholder', 'checked', 'selected', 'disabled',
-      'controls', 'autoplay', 'loop', 'muted',
-      'frameborder', 'allowfullscreen', 'allow',
-      'viewBox', 'xmlns', 'fill', 'stroke', 'stroke-width', 'd', 'x', 'y', 'x1', 'x2', 'y1', 'y2',
-      'cx', 'cy', 'r', 'points', 'offset', 'stop-color', 'stop-opacity', 'preserveAspectRatio',
-    ],
-    ALLOW_DATA_ATTR: true,
-  });
+  const bodyHtml = sanitizeAllowedMarkup(bodyWithoutHeadAssets);
 
   return {
     bodyHtml,
