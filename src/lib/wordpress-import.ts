@@ -53,50 +53,39 @@ export async function discoverWordPressImportTargets(baseUrl: string) {
   );
 
   const targetMap = new Map<string, WordPressImportTarget>();
+  const sitemapEntries = await Promise.all(
+    pageSitemaps.map(async (sitemapUrl) => {
+      const sourceType: WordPressImportTarget["sourceType"] = sitemapUrl.includes(
+        "-product-"
+      )
+        ? "product"
+        : "page";
+      const urls = await readSitemapUrls(sitemapUrl);
+      return { sourceType, urls };
+    })
+  );
 
-  for (const sitemapUrl of pageSitemaps) {
-    const sourceType = sitemapUrl.includes("-product-") ? "product" : "page";
-    const urls = await readSitemapUrls(sitemapUrl);
-
-    for (const url of urls) {
+  for (const sitemapEntry of sitemapEntries) {
+    for (const url of sitemapEntry.urls) {
       const slug = getSlugFromUrl(url);
       const importable =
-        sourceType === "product" ? true : !SYSTEM_PAGE_SLUGS.has(slug);
+        sitemapEntry.sourceType === "product" ? true : !SYSTEM_PAGE_SLUGS.has(slug);
       const reason = importable ? undefined : "system_page";
 
       if (!targetMap.has(url)) {
         targetMap.set(url, {
           url,
           slug,
-          sourceType,
+          sourceType: sitemapEntry.sourceType,
           importable,
           reason,
+          title: importable ? humanizeSlug(slug) : undefined,
         });
       }
     }
   }
 
-  const targets = Array.from(targetMap.values());
-
-  for (const target of targets.filter((item) => item.importable)) {
-    try {
-      const response = await fetch(target.url, {
-        headers: { "user-agent": "AzkazamDigital Importer/1.0" },
-        redirect: "follow",
-      });
-
-      if (!response.ok) continue;
-      const html = await response.text();
-      const meta = extractDocumentMeta(html);
-      if (meta.title) {
-        target.title = meta.title;
-      }
-    } catch {
-      // Ignore discovery title failures to keep the listing resilient.
-    }
-  }
-
-  return targets.sort((a, b) => {
+  return Array.from(targetMap.values()).sort((a, b) => {
     if (a.importable !== b.importable) return a.importable ? -1 : 1;
     if (a.sourceType !== b.sourceType) return a.sourceType.localeCompare(b.sourceType);
     return a.slug.localeCompare(b.slug);
@@ -168,6 +157,16 @@ function getSlugFromUrl(url: string) {
   const pathname = new URL(url).pathname.replace(/\/+$/, "");
   const segments = pathname.split("/").filter(Boolean);
   return segments.at(-1) || "";
+}
+
+function humanizeSlug(slug: string) {
+  if (!slug) return "Homepage";
+
+  return slug
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function extractDocumentMeta(html: string) {
