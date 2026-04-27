@@ -8,6 +8,10 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Terima Kasih",
   description: "Terima kasih atas pesanan Anda.",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 type ThankYouSettings = Pick<

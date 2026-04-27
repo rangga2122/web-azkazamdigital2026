@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatPrice, getProductCommissionLabel } from "@/lib/utils";
-import { FaCopy, FaExternalLinkAlt, FaImage, FaPlus, FaEdit, FaTrash, FaSave, FaTimes } from "react-icons/fa";
+import { FaCopy, FaExternalLinkAlt, FaImage, FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaEye } from "react-icons/fa";
 import toast from "react-hot-toast";
 import type { Product, Category, Page } from "@/types";
 
@@ -456,6 +456,7 @@ export default function AdminProductsPage() {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <a href={resolveProductTargetPathForProduct(p)} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-dark-400 hover:text-accent-400 hover:bg-accent-500/10 transition-all" title="Lihat Produk"><FaEye size={14} /></a>
                         <button onClick={() => startEdit(p)} className="p-2 rounded-lg text-dark-400 hover:text-primary-400 hover:bg-primary-500/10"><FaEdit size={14} /></button>
                         <button onClick={() => handleDelete(p.id)} className="p-2 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10"><FaTrash size={14} /></button>
                       </div>

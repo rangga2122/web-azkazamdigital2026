@@ -1,11 +1,13 @@
 import type { MetadataRoute } from "next";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site-url";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const baseUrl = getSiteUrl();
   const entries: MetadataRoute.Sitemap = [
     { url: baseUrl, lastModified: new Date(), changeFrequency: "daily", priority: 1 },
     { url: `${baseUrl}/produk`, lastModified: new Date(), changeFrequency: "daily", priority: 0.9 },
+    { url: `${baseUrl}/artikel`, lastModified: new Date(), changeFrequency: "daily", priority: 0.8 },
     { url: `${baseUrl}/kontak`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.5 },
     { url: `${baseUrl}/affiliate`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
   ];
@@ -43,6 +45,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           lastModified: new Date(p.updated_at),
           changeFrequency: "weekly",
           priority: 0.7,
+        });
+      });
+    }
+
+    const { data: articles } = await supabase
+      .from("articles")
+      .select("slug, updated_at, published_at")
+      .eq("status", "published");
+
+    if (articles) {
+      articles.forEach((article) => {
+        entries.push({
+          url: `${baseUrl}/artikel/${article.slug}`,
+          lastModified: new Date(article.updated_at || article.published_at || Date.now()),
+          changeFrequency: "weekly",
+          priority: 0.75,
         });
       });
     }

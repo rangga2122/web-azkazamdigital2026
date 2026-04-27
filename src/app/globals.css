@@ -474,3 +474,19 @@ body[data-site-theme="light"] [data-admin-panel] .shadow-slate-950\/8 {
   color: white;
   font-weight: 600;
 }
+
+.cms-content [data-product-recommendation="true"] a {
+  text-decoration: none !important;
+}
+
+.cms-content [data-product-recommendation="true"] p {
+  margin-bottom: 0;
+}
+
+.cms-content [data-product-recommendation="true"] img {
+  margin: 0;
+}
+
+body[data-site-theme="light"] .cms-content [data-product-recommendation="true"] {
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.12);
+}

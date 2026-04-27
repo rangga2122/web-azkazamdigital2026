@@ -15,13 +15,18 @@ type MediaFile = {
 export default function AdminMediaPage() {
   const [uploading, setUploading] = useState(false);
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
-  const [category, setCategory] = useState("general");
+  const [category, setCategory] = useState("all");
   const [loading, setLoading] = useState(true);
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/upload?category=${category}&t=${Date.now()}`, {
+      const query = new URLSearchParams({ t: Date.now().toString() });
+      if (category !== "all") {
+        query.set("category", category);
+      }
+
+      const res = await fetch(`/api/upload?${query.toString()}`, {
         cache: "no-store",
       });
       const data = await res.json();
@@ -142,6 +147,7 @@ export default function AdminMediaPage() {
           <div>
             <label className="block text-sm font-medium text-dark-300 mb-2">Kategori</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)} className="px-4 py-2.5 rounded-xl bg-dark-800 border border-dark-700 text-white text-sm focus:outline-none">
+              <option value="all">Semua</option>
               <option value="general">Umum</option>
               <option value="products">Produk</option>
               <option value="banners">Banner</option>

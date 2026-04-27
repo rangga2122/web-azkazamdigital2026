@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   FaHome, FaFileAlt, FaBox, FaTags, FaStar, FaQuestionCircle,
   FaShoppingCart, FaUsers, FaMoneyBillWave, FaCog, FaImage,
-  FaChartBar, FaSignOutAlt, FaBars, FaTimes, FaBullhorn, FaTicketAlt, FaInbox, FaWhatsapp, FaGlobe,
+  FaChartBar, FaSignOutAlt, FaBars, FaTimes, FaBullhorn, FaTicketAlt, FaInbox, FaWhatsapp, FaNewspaper,
 } from "react-icons/fa";
 import toast from "react-hot-toast";
 
@@ -68,10 +68,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         iconColor: "text-amber-500",
       },
       {
-        href: "/admin/wordpress-import",
-        icon: FaGlobe,
-        label: "Import WP",
-        iconColor: "text-cyan-500",
+        href: "/admin/articles",
+        icon: FaNewspaper,
+        label: "Artikel",
+        iconColor: "text-orange-500",
       },
       {
         href: "/admin/products",

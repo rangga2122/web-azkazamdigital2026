@@ -129,6 +129,13 @@ export type EmbeddedHtmlDocument = {
   bodyHtml: string;
   headHtml: string;
   styles: string;
+  scripts: EmbeddedHtmlScript[];
+};
+
+export type EmbeddedHtmlScript = {
+  content: string | null;
+  src: string | null;
+  attributes: Record<string, string | true>;
 };
 
 export function prepareEmbeddedHtmlDocument(
@@ -151,12 +158,102 @@ export function prepareEmbeddedHtmlDocument(
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<link\b[^>]*>/gi, "");
   const bodyHtml = sanitizeAllowedMarkup(bodyWithoutHeadAssets);
+  const scripts = extractEmbeddedScripts(html);
 
   return {
     bodyHtml,
     headHtml,
     styles,
+    scripts,
   };
+}
+
+function extractEmbeddedScripts(html: string): EmbeddedHtmlScript[] {
+  const scripts: EmbeddedHtmlScript[] = [];
+  const scriptRegex = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+
+  for (const match of html.matchAll(scriptRegex)) {
+    const rawAttributes = match[1] || "";
+    const content = (match[2] || "").trim();
+    const attributes = parseScriptAttributes(rawAttributes);
+    const src = typeof attributes.src === "string" ? attributes.src : null;
+
+    if (src && !isSafeScriptSource(src)) {
+      continue;
+    }
+
+    if (!src && !content) {
+      continue;
+    }
+
+    scripts.push({
+      content: content || null,
+      src,
+      attributes,
+    });
+  }
+
+  return scripts;
+}
+
+function parseScriptAttributes(rawAttributes: string) {
+  const attributes: Record<string, string | true> = {};
+  const attrRegex =
+    /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  const allowedAttrs = new Set([
+    "src",
+    "type",
+    "async",
+    "defer",
+    "crossorigin",
+    "referrerpolicy",
+    "integrity",
+    "nomodule",
+    "fetchpriority",
+  ]);
+
+  for (const match of rawAttributes.matchAll(attrRegex)) {
+    const rawName = match[1];
+    const name = rawName.toLowerCase();
+
+    if (!name || name.startsWith("on") || !allowedAttrs.has(name)) continue;
+
+    const rawValue = match[2] ?? match[3] ?? match[4] ?? "";
+    const normalizedValue = rawValue.trim();
+
+    if (
+      name === "src" &&
+      normalizedValue &&
+      !isSafeScriptSource(normalizedValue)
+    ) {
+      continue;
+    }
+
+    if (
+      match[2] !== undefined ||
+      match[3] !== undefined ||
+      match[4] !== undefined
+    ) {
+      if (!normalizedValue) continue;
+      attributes[name] = normalizedValue;
+      continue;
+    }
+
+    attributes[name] = true;
+  }
+
+  return attributes;
+}
+
+function isSafeScriptSource(value: string) {
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (!normalizedValue) return false;
+  if (normalizedValue.startsWith("javascript:")) return false;
+  if (normalizedValue.startsWith("vbscript:")) return false;
+  if (normalizedValue.startsWith("data:text/html")) return false;
+
+  return true;
 }
 
 /**

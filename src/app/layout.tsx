@@ -6,6 +6,7 @@ import { WhatsAppFloatingButton } from "@/components/ui/WhatsAppFloat";
 import { CustomScripts } from "@/components/tracking/CustomScripts";
 import { ThemeModeSync } from "@/components/ui/ThemeModeSync";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site-url";
 
 const fallbackMetadata: Metadata = {
   title: {
@@ -84,8 +85,10 @@ async function getRootSiteSettings(): Promise<RootSiteSettings> {
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getRootSiteSettings();
   const iconUrl = settings.faviconUrl || settings.logoUrl || DEFAULT_FAVICON;
+  const siteUrl = getSiteUrl();
 
   return {
+    metadataBase: new URL(siteUrl),
     title: {
       default: `${settings.siteName} - Produk Digital Premium`,
       template: `%s | ${settings.siteName}`,
@@ -96,12 +99,18 @@ export async function generateMetadata(): Promise<Metadata> {
       type: "website",
       locale: "id_ID",
       siteName: settings.siteName,
+      url: siteUrl,
     },
     robots: fallbackMetadata.robots,
     icons: {
       icon: iconUrl,
       shortcut: iconUrl,
       apple: iconUrl,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${settings.siteName} - Produk Digital Premium`,
+      description: settings.description,
     },
   };
 }

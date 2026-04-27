@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { unstable_cache } from "next/cache";
 import { EmbeddedHtmlPage } from "@/components/public/EmbeddedHtmlPage";
 import { AffiliateReferralTracker } from "@/components/public/AffiliateReferralTracker";
+import { ExternalHeadLinks } from "@/components/public/ExternalHeadLinks";
 import {
   formatPrice,
   isStandaloneHtml,
@@ -119,6 +120,7 @@ export default async function DynamicPage({
       <div className="min-h-screen bg-white" data-hide-public-chrome={page.hide_header_footer ? "true" : undefined}>
         {page.hide_header_footer && <HidePublicChromeStyle />}
         {page.product && <AffiliateReferralTracker productSlug={page.product.slug} />}
+        <ExternalHeadLinks html={contentHtml} />
         <EmbeddedHtmlPage document={embeddedPage} />
       </div>
     );
@@ -128,6 +130,7 @@ export default async function DynamicPage({
     <div className="min-h-screen py-12 sm:py-20" data-hide-public-chrome={page.hide_header_footer ? "true" : undefined}>
       {page.hide_header_footer && <HidePublicChromeStyle />}
       {page.product && <AffiliateReferralTracker productSlug={page.product.slug} />}
+      {contentHtml && <ExternalHeadLinks html={contentHtml} />}
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         {/* Title */}
         <div className="text-center mb-10">
@@ -156,7 +159,8 @@ function HidePublicChromeStyle() {
     <style>
       {`
         body:has([data-hide-public-chrome="true"]) [data-public-header],
-        body:has([data-hide-public-chrome="true"]) [data-public-footer] {
+        body:has([data-hide-public-chrome="true"]) [data-public-footer],
+        body:has([data-hide-public-chrome="true"]) [data-whatsapp-float] {
           display: none !important;
         }
       `}

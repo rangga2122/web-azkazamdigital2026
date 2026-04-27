@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { FaCopy, FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaUpload } from "react-icons/fa";
+import { FaCopy, FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaUpload, FaEye } from "react-icons/fa";
 import toast from "react-hot-toast";
 import type { Page, Product } from "@/types";
 
@@ -297,6 +297,7 @@ export default function AdminPagesPage() {
                     <td className="py-3 px-4 text-dark-400">{formatDate(page.created_at)}</td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <a href={`/${page.slug}`} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-dark-400 hover:text-accent-400 hover:bg-accent-500/10 transition-all" title="Lihat Halaman"><FaEye size={14} /></a>
                         <button onClick={() => startEdit(page)} className="p-2 rounded-lg text-dark-400 hover:text-primary-400 hover:bg-primary-500/10 transition-all"><FaEdit size={14} /></button>
                         <button onClick={() => handleDelete(page.id)} className="p-2 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-all"><FaTrash size={14} /></button>
                       </div>

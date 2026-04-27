@@ -41,6 +41,10 @@ export async function generateMetadata({
   return {
     title: `Pesan ${product.title}`,
     description: `Form pemesanan ${product.title}`,
+    robots: {
+      index: false,
+      follow: false,
+    },
   };
 }
 

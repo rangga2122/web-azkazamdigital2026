@@ -78,6 +78,45 @@ export interface Page {
   product?: Pick<Product, "id" | "title" | "slug" | "thumbnail_url" | "price" | "affiliate_commission_rate"> | null;
 }
 
+export interface Article {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content_html: string;
+  cover_image: string | null;
+  status: 'draft' | 'published';
+  seo_title: string | null;
+  seo_description: string | null;
+  focus_keyword: string | null;
+  author_name: string | null;
+  canonical_url: string | null;
+  tags: string[];
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArticleAutomationSettings {
+  id: string;
+  automation_enabled: boolean;
+  auto_publish: boolean;
+  schedule_interval_hours: number;
+  articles_per_run: number;
+  queue_cursor: number;
+  last_run_at: string | null;
+  default_author_name: string;
+  site_context: string;
+  prompt_template: string;
+  topic_queue: string;
+  target_keywords: string;
+  avoid_topics: string;
+  internal_link_url: string;
+  internal_link_anchor: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Product {
   id: string;
   title: string;
