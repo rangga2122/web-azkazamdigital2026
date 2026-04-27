@@ -102,15 +102,15 @@ insert into public.pages (title, slug, content_html, status, seo_title, seo_desc
 on conflict (slug) do nothing;
 
 insert into public.faqs (question, answer, sort_order) values
-  ('Apakah website ini memakai WordPress?', 'Tidak. Project ini memakai Next.js, Tailwind CSS, dan Supabase sebagai pengganti WordPress.', 1),
-  ('Apakah bisa impor HTML landing page?', 'Bisa. Admin dapat menempel HTML atau mengunggah file HTML, lalu kontennya disimpan dan dirender sebagai halaman berbasis slug.', 2),
-  ('Bagaimana tracking afiliasi bekerja?', 'Sistem memakai kode referral, cookie last-click, tracking klik, order, konversi, dan komisi.', 3)
+  ('Apakah tools seperti Roket dan Robotta cocok untuk pemula?', 'Cocok. Produk kami dirancang agar mudah dipakai untuk pemula maupun seller yang sudah rutin jualan online. Anda bisa mulai dari fitur dasar lebih dulu, lalu lanjut optimasi sesuai kebutuhan promosi.', 1),
+  ('Apakah produk yang dijual bisa dipakai untuk membantu promosi otomatis?', 'Bisa. Beberapa produk kami seperti Roket, Robotta, TIKBOT, SBO, dan InstaBlast Pro memang difokuskan untuk membantu proses promosi, posting, broadcast, atau distribusi konten agar lebih hemat waktu.', 2),
+  ('Kalau saya jualan produk digital, tools mana yang paling cocok?', 'Kalau fokus Anda jualan produk digital, biasanya kombinasi yang paling relevan adalah landing page generator, generator artikel AI, broadcast WhatsApp, dan tools auto posting agar trafik, follow-up, dan closing bisa berjalan lebih rapi.', 3)
 on conflict do nothing;
 
 insert into public.testimonials (name, role, quote, rating, sort_order) values
-  ('Raka Pratama', 'Pendiri Kursus Online', 'Dasbornya jauh lebih ringan dibanding setup WordPress lama saya.', 5, 1),
-  ('Nadia Lestari', 'Pemasar Digital', 'Fitur afiliasi dan order membuat kampanye produk digital lebih mudah dipantau.', 5, 2),
-  ('Bima Santoso', 'Kreator Template', 'Impor HTML landing page sangat membantu untuk memakai ulang aset kampanye yang sudah ada.', 5, 3)
+  ('Dimas Saputra', 'Seller Facebook Marketplace', 'Roket sangat membantu saya posting produk dari PC lebih cepat. Upload listing jadi lebih rapi dan hemat waktu dibanding manual satu per satu.', 5, 1),
+  ('Rina Wulandari', 'Pelaku Jualan Online', 'Robotta enak dipakai dari Android untuk bantu promosi di Facebook Marketplace. Cocok buat yang butuh alat praktis langsung dari HP.', 5, 2),
+  ('Andi Prakoso', 'Owner Toko Digital', 'InstaBlast Pro memudahkan broadcast WhatsApp dan follow-up calon pembeli. Chat jadi lebih teratur dan closing terasa lebih cepat.', 5, 3)
 on conflict do nothing;
 
 insert into public.affiliates (full_name, email, whatsapp, referral_code, status, commission_rate, payout_method, payout_account) values

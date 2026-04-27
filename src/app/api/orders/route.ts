@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import {
   createServerSupabaseClient,
   createServiceRoleClient,
@@ -37,6 +37,41 @@ type CouponRow = {
   ends_at: string | null;
 };
 
+type PostOrderSideEffectsInput = {
+  origin: string;
+  thankYouUrl: string;
+  dynamicQrisUrl: string;
+  whatsappConfirmationUrl: string;
+  buyerName: string;
+  buyerEmail: string;
+  buyerWhatsapp: string;
+  subtotal: number;
+  discountAmount: number;
+  uniqueCode: number;
+  totalAmount: number;
+  settings: {
+    site_name: string | null;
+    email: string | null;
+    payment_bank_name: string | null;
+    payment_account_number: string | null;
+    payment_account_name: string | null;
+    payment_qris_url: string | null;
+    whatsapp_number: string | null;
+    social_links: Record<string, unknown> | null;
+  };
+  product: {
+    id: string;
+    title: string;
+    thumbnail_url: string | null;
+  };
+  order: {
+    id: string;
+    order_code: string;
+    created_at: string;
+    status: string;
+  };
+};
+
 export async function POST(request: NextRequest) {
   try {
     const sessionSupabase = await createServerSupabaseClient();
@@ -66,19 +101,22 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createServiceRoleClient();
 
-    const { data: settings } = await supabase
-      .from("site_settings")
-      .select(
-        "checkout_coupon_enabled, site_name, email, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number, social_links"
-      )
-      .limit(1)
-      .single();
-
-    const { data: product, error: productError } = await supabase
-      .from("products")
-      .select("id, title, price, affiliate_commission_rate, is_active, thumbnail_url")
-      .eq("id", product_id)
-      .single();
+    const [settingsRes, productRes] = await Promise.all([
+      supabase
+        .from("site_settings")
+        .select(
+          "checkout_coupon_enabled, site_name, email, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number, social_links"
+        )
+        .limit(1)
+        .single(),
+      supabase
+        .from("products")
+        .select("id, title, price, affiliate_commission_rate, is_active, thumbnail_url")
+        .eq("id", product_id)
+        .single(),
+    ]);
+    const settings = settingsRes.data;
+    const { data: product, error: productError } = productRes;
 
     if (productError || !product || !product.is_active) {
       return NextResponse.json(
@@ -202,152 +240,61 @@ export async function POST(request: NextRequest) {
         .eq("id", coupon.id);
     }
 
-    let emailResult: { messageId?: string; skipped?: boolean; error?: string } = {
-      skipped: true,
-    };
-    let whatsappResult: {
-      adminSent?: boolean;
-      customerSent?: boolean;
-      skipped?: boolean;
-      error?: string;
-    } = { skipped: true };
-
-    const origin =
-      request.nextUrl.origin ||
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.NEXT_PUBLIC_APP_URL;
+    const origin = getRequestOrigin(request);
     const thankYouUrl = new URL(`/thank-you/${order.order_code}`, origin).toString();
+    const dynamicQrisUrl = new URL(
+      `/api/qris/order/${order.order_code}`,
+      origin
+    ).toString();
     const whatsappConfirmationUrl = buildWhatsappUrl(
       settings?.whatsapp_number || null,
       order.order_code
     );
 
-    try {
-      const info = await sendOrderInvoiceEmail({
-        buyerName: buyer_name,
-        buyerEmail: normalizedBuyerEmail,
-        productName: product.title,
-        orderCode: order.order_code,
-        totalAmount,
-        subtotal,
-        discountAmount,
-        uniqueCode,
-        thankYouUrl,
-        whatsappConfirmationUrl,
-        siteName: settings?.site_name || "AzkazamDigital",
-        supportEmail: settings?.email || null,
-        payment: {
-          bankName: settings?.payment_bank_name || "BCA",
-          accountNumber: settings?.payment_account_number || "7891502145",
-          accountName: settings?.payment_account_name || "ASNIDAR NUR",
-          qrisUrl: settings?.payment_qris_url || "/qris.webp",
-        },
-      });
-
-      emailResult = {
-        messageId: info.messageId,
-        skipped: false,
-      };
-    } catch (error) {
-      console.error("Send order invoice email error:", error);
-      emailResult = {
-        skipped: false,
-        error: error instanceof Error ? error.message : "Failed to send email.",
-      };
-    }
-
-    try {
-      const whatsappConfig = getWhatsappNotificationConfig(
-        settings?.social_links as Record<string, unknown> | null,
-        settings?.whatsapp_number || null
-      );
-      const origin =
-        request.nextUrl.origin ||
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        process.env.NEXT_PUBLIC_APP_URL ||
-        "http://localhost:3000";
-
-      const result = await sendOrderCreatedWhatsappNotifications({
-        config: whatsappConfig,
-        order: buildWhatsappOrderContext({
-          id: order.id,
-          orderCode: order.order_code,
-          buyerName: buyer_name,
-          buyerEmail: normalizedBuyerEmail,
-          buyerWhatsapp: buyer_whatsapp,
-          productName: product.title,
-          totalAmount,
-          status: order.status,
-          createdAt: order.created_at,
-          siteName: settings?.site_name || "AzkazamDigital",
-          productImageUrl: productImageFromProduct(product),
-        }),
+    after(async () => {
+      await runPostOrderSideEffects({
         origin,
-      });
-
-      whatsappResult = {
-        ...result,
-        skipped: false,
-      };
-    } catch (error) {
-      console.error("Send order WhatsApp notification error:", error);
-      whatsappResult = {
-        skipped: false,
-        error:
-          error instanceof Error ? error.message : "Failed to send WhatsApp notification.",
-      };
-    }
-
-    try {
-      const whatsappConfig = getWhatsappNotificationConfig(
-        settings?.social_links as Record<string, unknown> | null,
-        settings?.whatsapp_number || null
-      );
-
-      await syncOrderWhatsappFollowups({
-        config: whatsappConfig,
-        supabase,
-        order: {
-          id: order.id,
-          order_code: order.order_code,
-          buyer_name,
-          buyer_email: normalizedBuyerEmail,
-          buyer_whatsapp,
-          product_name: product.title,
-          product_id: product.id,
-          total_amount: totalAmount,
-          status: order.status,
-          created_at: order.created_at,
-        },
-      });
-      ensureWhatsappAutomationLoop();
-    } catch (error) {
-      console.error("Schedule WhatsApp followups error:", error);
-    }
-
-    try {
-      await syncOrderLeadToLicenseManager({
-        orderId: order.id,
-        orderCode: order.order_code,
+        thankYouUrl,
+        dynamicQrisUrl,
+        whatsappConfirmationUrl,
         buyerName: buyer_name,
         buyerEmail: normalizedBuyerEmail,
         buyerWhatsapp: buyer_whatsapp,
-        productName: product.title,
-        subtotalAmount: subtotal,
+        subtotal,
+        discountAmount,
         uniqueCode,
         totalAmount,
-        status: order.status,
+        settings: {
+          site_name: settings?.site_name || null,
+          email: settings?.email || null,
+          payment_bank_name: settings?.payment_bank_name || null,
+          payment_account_number: settings?.payment_account_number || null,
+          payment_account_name: settings?.payment_account_name || null,
+          payment_qris_url: settings?.payment_qris_url || null,
+          whatsapp_number: settings?.whatsapp_number || null,
+          social_links:
+            (settings?.social_links as Record<string, unknown> | null) || null,
+        },
+        product: {
+          id: product.id,
+          title: product.title,
+          thumbnail_url: product.thumbnail_url || null,
+        },
+        order: {
+          id: order.id,
+          order_code: order.order_code,
+          created_at: order.created_at,
+          status: order.status,
+        },
       });
-    } catch (error) {
-      console.error("Sync order lead to license manager error:", error);
-    }
+    });
 
     return NextResponse.json({
       success: true,
       order_code: order.order_code,
       total_amount: totalAmount,
-      email: emailResult,
-      whatsapp: whatsappResult,
+      thank_you_url: thankYouUrl,
+      background_jobs: "scheduled",
     });
   } catch (error) {
     console.error("Create order error:", error);
@@ -395,4 +342,107 @@ function buildWhatsappUrl(phone: string | null, orderCode: string) {
   );
 
   return `https://wa.me/${cleanPhone}?text=${message}`;
+}
+
+function getRequestOrigin(request: NextRequest) {
+  return (
+    request.nextUrl.origin ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000"
+  );
+}
+
+async function runPostOrderSideEffects(input: PostOrderSideEffectsInput) {
+  const whatsappConfig = getWhatsappNotificationConfig(
+    input.settings.social_links,
+    input.settings.whatsapp_number
+  );
+  const followupSupabase = await createServiceRoleClient();
+
+  const tasks = await Promise.allSettled([
+    sendOrderInvoiceEmail({
+      buyerName: input.buyerName,
+      buyerEmail: input.buyerEmail,
+      productName: input.product.title,
+      orderCode: input.order.order_code,
+      totalAmount: input.totalAmount,
+      subtotal: input.subtotal,
+      discountAmount: input.discountAmount,
+      uniqueCode: input.uniqueCode,
+      thankYouUrl: input.thankYouUrl,
+      whatsappConfirmationUrl: input.whatsappConfirmationUrl,
+      siteName: input.settings.site_name || "AzkazamDigital",
+      supportEmail: input.settings.email || null,
+      payment: {
+        bankName: input.settings.payment_bank_name || "BCA",
+        accountNumber:
+          input.settings.payment_account_number || "7891502145",
+        accountName: input.settings.payment_account_name || "ASNIDAR NUR",
+        qrisUrl: input.dynamicQrisUrl,
+        qrisSourceUrl: input.settings.payment_qris_url || "/qris.webp",
+        qrisAmount: input.totalAmount,
+      },
+    }),
+    sendOrderCreatedWhatsappNotifications({
+      config: whatsappConfig,
+      order: buildWhatsappOrderContext({
+        id: input.order.id,
+        orderCode: input.order.order_code,
+        buyerName: input.buyerName,
+        buyerEmail: input.buyerEmail,
+        buyerWhatsapp: input.buyerWhatsapp,
+        productName: input.product.title,
+        totalAmount: input.totalAmount,
+        status: input.order.status,
+        createdAt: input.order.created_at,
+        siteName: input.settings.site_name || "AzkazamDigital",
+        productImageUrl: productImageFromProduct(input.product),
+      }),
+      origin: input.origin,
+    }),
+    syncOrderWhatsappFollowups({
+      config: whatsappConfig,
+      supabase: followupSupabase,
+      order: {
+        id: input.order.id,
+        order_code: input.order.order_code,
+        buyer_name: input.buyerName,
+        buyer_email: input.buyerEmail,
+        buyer_whatsapp: input.buyerWhatsapp,
+        product_name: input.product.title,
+        product_id: input.product.id,
+        total_amount: input.totalAmount,
+        status: input.order.status,
+        created_at: input.order.created_at,
+      },
+    }).then(() => {
+      ensureWhatsappAutomationLoop();
+    }),
+    syncOrderLeadToLicenseManager({
+      orderId: input.order.id,
+      orderCode: input.order.order_code,
+      buyerName: input.buyerName,
+      buyerEmail: input.buyerEmail,
+      buyerWhatsapp: input.buyerWhatsapp,
+      productName: input.product.title,
+      subtotalAmount: input.subtotal,
+      uniqueCode: input.uniqueCode,
+      totalAmount: input.totalAmount,
+      status: input.order.status,
+    }),
+  ]);
+
+  const labels = [
+    "Send order invoice email",
+    "Send order WhatsApp notification",
+    "Schedule WhatsApp followups",
+    "Sync order lead to license manager",
+  ];
+
+  tasks.forEach((task, index) => {
+    if (task.status === "rejected") {
+      console.error(`${labels[index]} error:`, task.reason);
+    }
+  });
 }

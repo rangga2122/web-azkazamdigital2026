@@ -305,6 +305,7 @@ export function OrderFormClient({
         <button
           type="submit"
           disabled={loading}
+          data-order-submit="true"
           className="w-full rounded-[8px] bg-[#13bd12] px-6 py-4 text-lg font-extrabold uppercase tracking-wide text-white shadow-sm transition hover:bg-[#0ead0e] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? "Memproses..." : "Pesan Sekarang"}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { FaBars, FaTimes } from "react-icons/fa";
 import type { SiteNavLink } from "@/lib/site-navigation";
 
@@ -15,7 +16,12 @@ export function Navbar({
   navLinks: SiteNavLink[];
 }) {
   const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const displayName = siteName?.trim() || "AzkazamDigital";
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   function isLinkActive(href: string) {
     if (href === "/") {
@@ -75,39 +81,46 @@ export function Navbar({
           </div>
 
           {/* Mobile toggle */}
-          <details className="group relative md:hidden">
-            <summary className="list-none cursor-pointer rounded-xl p-2 text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 [&::-webkit-details-marker]:hidden">
+          <div className="relative md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((current) => !current)}
+              className="rounded-xl p-2 text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
+            >
               <span className="sr-only">Buka/tutup menu</span>
-              <FaBars size={20} className="group-open:hidden" />
-              <FaTimes size={20} className="hidden group-open:block" />
-            </summary>
+              {mobileMenuOpen ? <FaTimes size={20} /> : <FaBars size={20} />}
+            </button>
 
-            <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white/95 shadow-[0_24px_60px_rgba(15,23,42,0.22)] backdrop-blur-xl">
-              <div className="px-3 py-3 space-y-1">
-                {navLinks.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`block rounded-xl px-4 py-3 text-sm font-medium transition-all ${
-                      isLinkActive(link.href)
-                        ? "bg-blue-100/90 text-blue-700 ring-1 ring-blue-200"
-                        : "text-slate-800 hover:bg-blue-50 hover:text-blue-700"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-                <div className="pt-3 border-t border-slate-200">
-                  <Link
-                    href="/produk"
-                    className="block rounded-xl bg-gradient-to-r from-primary-600 to-accent-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-primary-600/20"
-                  >
-                    Lihat Produk
-                  </Link>
+            {mobileMenuOpen ? (
+              <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white/95 shadow-[0_24px_60px_rgba(15,23,42,0.22)] backdrop-blur-xl">
+                <div className="px-3 py-3 space-y-1">
+                  {navLinks.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`block rounded-xl px-4 py-3 text-sm font-medium transition-all ${
+                        isLinkActive(link.href)
+                          ? "bg-blue-100/90 text-blue-700 ring-1 ring-blue-200"
+                          : "text-slate-800 hover:bg-blue-50 hover:text-blue-700"
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                  <div className="pt-3 border-t border-slate-200">
+                    <Link
+                      href="/produk"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="block rounded-xl bg-gradient-to-r from-primary-600 to-accent-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-primary-600/20"
+                    >
+                      Lihat Produk
+                    </Link>
+                  </div>
                 </div>
               </div>
-            </div>
-          </details>
+            ) : null}
+          </div>
         </div>
       </div>
     </nav>

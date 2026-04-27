@@ -138,6 +138,7 @@ body[data-site-theme="light"] .bg-primary-600.text-white,
 body[data-site-theme="light"] .bg-primary-700.text-white,
 body[data-site-theme="light"] .bg-accent-600.text-white,
 body[data-site-theme="light"] .bg-green-500.text-white,
+body[data-site-theme="light"] button[data-order-submit="true"],
 body[data-site-theme="light"] button.bg-primary-600,
 body[data-site-theme="light"] a.bg-primary-600 {
   color: #ffffff !important;

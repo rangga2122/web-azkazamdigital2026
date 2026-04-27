@@ -23,8 +23,7 @@ async function getHomeData() {
         .select("*")
         .eq("is_active", true)
         .order("is_featured", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(6),
+        .order("created_at", { ascending: false }),
       supabase
         .from("testimonials")
         .select("*")
@@ -60,7 +59,6 @@ async function getHomeData() {
 
 export default async function HomePage() {
   const { products, testimonials, faqs, texts } = await getHomeData();
-  const heroProduct = products[0];
   const stats = [
     { value: texts.stat_1_value, label: texts.stat_1_label },
     { value: texts.stat_2_value, label: texts.stat_2_label },
@@ -75,22 +73,22 @@ export default async function HomePage() {
         <div className="absolute -bottom-28 -left-28 h-80 w-80 rounded-full bg-white/10" />
         <div className="absolute left-1/2 top-28 h-64 w-64 -translate-x-1/2 rounded-full bg-cyan-300/20 blur-3xl" />
 
-        <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[1.03fr_0.97fr] lg:px-8 lg:py-28">
+        <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-22">
           <div className="animate-fade-in-up">
-            <div className="home-contrast mb-6 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-950/10 ring-1 ring-white/20 backdrop-blur">
+            <div className="home-contrast mb-5 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-950/10 ring-1 ring-white/20 backdrop-blur">
               <FaRobot className="text-cyan-100" />
               {texts.hero_badge}
             </div>
 
-            <h1 className="home-contrast max-w-3xl text-4xl font-bold leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
+            <h1 className="home-contrast max-w-5xl text-4xl font-bold leading-tight tracking-tight text-white sm:text-5xl lg:text-[4.2rem]">
               {texts.hero_title}
             </h1>
 
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-blue-50 sm:text-xl">
+            <p className="mt-5 max-w-3xl text-base leading-8 text-blue-50 sm:text-lg lg:text-[1.2rem]">
               {texts.hero_subtitle}
             </p>
 
-            <div className="mt-9 flex flex-col gap-4 sm:flex-row">
+            <div className="mt-8 flex flex-col gap-4 sm:flex-row">
               <Link
                 href={texts.hero_primary_url}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-7 py-3.5 font-bold text-[#0066cc] shadow-xl shadow-blue-950/15 transition hover:scale-105 hover:bg-red-500 hover:text-white"
@@ -106,11 +104,11 @@ export default async function HomePage() {
               </Link>
             </div>
 
-            <div className="mt-12 grid max-w-2xl grid-cols-3 gap-3 sm:gap-5">
+            <div className="mt-10 grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-5">
               {stats.map((stat) => (
                 <div
                   key={stat.label}
-                  className="group relative overflow-hidden rounded-[1.35rem] bg-white px-3 py-5 text-center shadow-2xl shadow-blue-950/20 ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-blue-950/30 sm:px-6"
+                  className="group relative overflow-hidden rounded-[1.35rem] bg-white px-4 py-5 text-center shadow-2xl shadow-blue-950/20 ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-blue-950/30"
                 >
                   <div className="absolute inset-x-6 top-0 h-1.5 rounded-b-full bg-[linear-gradient(90deg,#00d2d3,#0077ff)]" />
                   <div className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full bg-blue-100 transition group-hover:scale-125" />
@@ -122,40 +120,6 @@ export default async function HomePage() {
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-
-          <div className="relative animate-fade-in-up delay-200">
-            <div className="absolute -inset-6 rounded-[2rem] bg-white/10 blur-2xl" />
-            <div className="relative rounded-[2rem] bg-white p-4 shadow-2xl shadow-blue-950/25">
-              <div className="overflow-hidden rounded-[1.5rem] bg-[#eef7ff]">
-                {heroProduct?.thumbnail_url ? (
-                  <img
-                    src={heroProduct.thumbnail_url}
-                    alt={heroProduct.title}
-                    className="h-72 w-full object-cover sm:h-96"
-                  />
-                ) : (
-                  <div className="flex h-72 items-center justify-center bg-[linear-gradient(135deg,#dff7ff,#ffffff)] sm:h-96">
-                    <FaRobot className="text-8xl text-[#0077ff]" />
-                  </div>
-                )}
-              </div>
-              <div className="absolute bottom-8 left-8 right-8 rounded-2xl bg-white/92 p-4 text-[#1a1a2e] shadow-xl backdrop-blur">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0066cc]">
-                      {texts.hero_product_eyebrow}
-                    </p>
-                    <h2 className="mt-1 text-lg font-bold">
-                      {heroProduct?.title || texts.hero_product_fallback_title}
-                    </h2>
-                  </div>
-                  <div className="rounded-full bg-red-500 px-3 py-1 text-xs font-bold text-white">
-                    {texts.hero_product_badge}
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -255,15 +219,6 @@ export default async function HomePage() {
               ))}
             </div>
 
-            <div className="mt-12 text-center">
-              <Link
-                href="/produk"
-                className="home-contrast inline-flex items-center gap-2 rounded-full bg-[#0066cc] px-8 py-3 font-bold text-white shadow-lg shadow-blue-900/20 transition hover:scale-105 hover:bg-red-500"
-              >
-                {texts.products_all_button}
-                <FaArrowRight size={14} />
-              </Link>
-            </div>
           </div>
         </section>
       )}

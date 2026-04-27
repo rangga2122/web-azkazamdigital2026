@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import nodemailer from "nodemailer";
+import { createDynamicQrisSvgFromSource } from "@/lib/qris";
 import { formatPrice } from "@/lib/utils";
 
 type BaseEmailPayload = {
@@ -18,6 +19,8 @@ type PaymentInstructions = {
   accountNumber: string | null;
   accountName: string | null;
   qrisUrl: string | null;
+  qrisSourceUrl?: string | null;
+  qrisAmount?: number | null;
 };
 
 type OrderInvoiceEmailPayload = BaseEmailPayload & {
@@ -91,12 +94,29 @@ function getContentType(fileName: string) {
   return "image/webp";
 }
 
-async function resolveInlineQrisImage(qrisUrl: string | null) {
-  if (!qrisUrl) return null;
-
+async function resolveInlineQrisImage(payment: PaymentInstructions) {
   const cid = "payment-qris@azkazamdigital";
+  const qrisSourceUrl = payment.qrisSourceUrl?.trim() || null;
+  const qrisAmount = Number(payment.qrisAmount || 0);
+  const qrisUrl = payment.qrisUrl;
 
   try {
+    if (qrisSourceUrl && Number.isFinite(qrisAmount) && qrisAmount > 0) {
+      const svg = await createDynamicQrisSvgFromSource(qrisSourceUrl, qrisAmount);
+
+      return {
+        cid,
+        attachment: {
+          filename: "qris-dynamic.svg",
+          content: Buffer.from(svg, "utf-8"),
+          contentType: "image/svg+xml",
+          cid,
+        },
+      };
+    }
+
+    if (!qrisUrl) return null;
+
     if (/^https?:\/\//i.test(qrisUrl)) {
       const response = await fetch(qrisUrl);
       if (!response.ok) return null;
@@ -176,7 +196,7 @@ export async function sendOrderInvoiceEmail(payload: OrderInvoiceEmailPayload) {
     payload.supportEmail
   );
   const qrisUrl = absoluteUrl(payload.payment.qrisUrl);
-  const inlineQrisImage = await resolveInlineQrisImage(payload.payment.qrisUrl);
+  const inlineQrisImage = await resolveInlineQrisImage(payload.payment);
   const qrisImageSource = inlineQrisImage ? `cid:${inlineQrisImage.cid}` : qrisUrl;
 
   const html = `

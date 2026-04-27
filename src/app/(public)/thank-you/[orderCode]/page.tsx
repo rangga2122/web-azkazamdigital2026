@@ -2,6 +2,8 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { formatPrice } from "@/lib/utils";
 import { FaWhatsapp } from "react-icons/fa";
 import { ThankYouClient } from "@/components/public/ThankYouClient";
+import { PaymentExpiryCountdown } from "@/components/public/PaymentExpiryCountdown";
+import { CopyAccountButton } from "@/components/public/CopyAccountButton";
 import type { Order, SiteSettings } from "@/types";
 import type { Metadata } from "next";
 
@@ -16,6 +18,7 @@ export const metadata: Metadata = {
 
 type ThankYouSettings = Pick<
   SiteSettings,
+  | "site_name"
   | "hide_thank_you_chrome"
   | "payment_bank_name"
   | "payment_account_number"
@@ -30,7 +33,7 @@ async function getData(orderCode: string) {
     supabase.from("orders").select("*").eq("order_code", orderCode).single(),
     supabase
       .from("site_settings")
-      .select("hide_thank_you_chrome, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number")
+      .select("site_name, hide_thank_you_chrome, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number")
       .limit(1)
       .single(),
   ]);
@@ -38,6 +41,7 @@ async function getData(orderCode: string) {
   return {
     order: (orderRes.data || null) as Order | null,
     settings: {
+      site_name: settingsRes.data?.site_name || "AzkazamDigital",
       hide_thank_you_chrome: settingsRes.data?.hide_thank_you_chrome ?? true,
       payment_bank_name: settingsRes.data?.payment_bank_name || "BCA",
       payment_account_number:
@@ -62,6 +66,9 @@ export default async function ThankYouPage({
   const uniqueCode = Number(order?.unique_code || 0);
   const baseAfterDiscount = Math.max(subtotal - discount, 0);
   const whatsappUrl = buildWhatsappUrl(settings.whatsapp_number, orderCode);
+  const qrisImageUrl = order
+    ? `/api/qris/order/${order.order_code}`
+    : settings.payment_qris_url || "/qris.webp";
 
   return (
     <div
@@ -138,8 +145,13 @@ export default async function ThankYouPage({
             <div className="mb-2 text-sm font-extrabold text-blue-700">
               {settings.payment_bank_name}
             </div>
-            <div className="text-xl font-extrabold tracking-wide text-red-500">
-              {settings.payment_account_number}
+            <div className="flex items-center justify-center gap-2">
+              <div className="text-xl font-extrabold tracking-wide text-red-500">
+                {settings.payment_account_number}
+              </div>
+              <CopyAccountButton
+                accountNumber={settings.payment_account_number}
+              />
             </div>
             <div className="mt-2 text-xs font-medium text-slate-500">
               {settings.payment_account_name}
@@ -151,17 +163,30 @@ export default async function ThankYouPage({
           </h2>
 
           <div className="mb-6 rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4">
+            <div className="mb-3 text-center text-sm font-extrabold uppercase tracking-wide text-slate-700">
+              {settings.site_name}
+            </div>
             <div className="mx-auto mb-4 max-w-[210px] rounded-[8px] bg-white p-2 shadow-sm">
               <img
-                src={settings.payment_qris_url || "/qris.webp"}
+                src={qrisImageUrl}
                 alt="QRIS pembayaran"
                 className="h-auto w-full rounded-[6px]"
+                loading="eager"
+                decoding="sync"
+                fetchPriority="high"
               />
             </div>
+            {order ? (
+              <PaymentExpiryCountdown
+                createdAt={order.created_at}
+                status={order.status}
+                expiryMinutes={10}
+              />
+            ) : null}
             <div className="rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-left text-xs leading-relaxed text-amber-800">
               <strong>Perhatian:</strong>
               <br />
-              Pastikan Anda melakukan pembayaran hanya melalui QRIS atau rekening yang tertera di atas. Simpan bukti pembayaran untuk konfirmasi.
+              Pastikan anda hanya melakukan scan qris hanya lewat web resmi azkazamdigital.
             </div>
           </div>
 
