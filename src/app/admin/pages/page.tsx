@@ -15,6 +15,7 @@ export default function AdminPagesPage() {
   const [editing, setEditing] = useState<Page | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [generatingSeo, setGeneratingSeo] = useState(false);
   const [form, setForm] = useState({
     title: "", slug: "", content_html: "", featured_image: "",
     seo_title: "", seo_description: "", status: "draft", sort_order: 0,
@@ -101,6 +102,68 @@ export default function AdminPagesPage() {
     const text = await file.text();
     setForm((current) => ({ ...current, content_html: text }));
     toast.success("File HTML berhasil diimport!");
+  }
+
+  async function handleGenerateSeo() {
+    if (!form.content_html.trim()) {
+      toast.error("Isi atau impor HTML dulu agar AI punya acuan.");
+      return;
+    }
+
+    setGeneratingSeo(true);
+
+    try {
+      const response = await fetch("/api/admin/pages/seo-suggestions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: form.title,
+          slug: form.slug,
+          contentHtml: form.content_html,
+          productTitle: selectedProduct?.title || "",
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            suggestions?: {
+              seoTitle?: string;
+              seoDescription?: string;
+              summary?: string;
+            };
+            error?: string;
+          }
+        | null;
+
+      if (!response.ok || !payload?.suggestions) {
+        throw new Error(
+          payload?.error || "Gagal membuat saran SEO halaman dengan AI."
+        );
+      }
+
+      setForm((current) => ({
+        ...current,
+        seo_title: payload.suggestions?.seoTitle || current.seo_title,
+        seo_description:
+          payload.suggestions?.seoDescription || current.seo_description,
+      }));
+
+      toast.success(
+        payload.suggestions.summary
+          ? `SEO terisi. ${payload.suggestions.summary}`
+          : "Judul SEO dan deskripsi SEO berhasil dibuat."
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Gagal membuat saran SEO halaman dengan AI."
+      );
+    } finally {
+      setGeneratingSeo(false);
+    }
   }
 
   const selectedProduct = products.find((product) => product.id === form.product_id);
@@ -227,7 +290,18 @@ export default function AdminPagesPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div>
-              <label className="block text-sm font-medium text-dark-300 mb-2">Judul SEO</label>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-dark-300">Judul SEO</label>
+                <button
+                  type="button"
+                  onClick={handleGenerateSeo}
+                  disabled={generatingSeo}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary-500/15 px-3 py-1.5 text-xs font-semibold text-primary-300 transition-colors hover:bg-primary-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <FaUpload size={10} />
+                  {generatingSeo ? "Generating..." : "Generate SEO AI"}
+                </button>
+              </div>
               <input type="text" value={form.seo_title} onChange={(e) => setForm({...form, seo_title: e.target.value})} className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50" />
             </div>
             <div>

@@ -38,6 +38,15 @@ type AutomationSuggestionInput = {
   siteDescription?: string | null;
 };
 
+type PageSeoSuggestionInput = {
+  title?: string | null;
+  slug?: string | null;
+  contentHtml?: string | null;
+  productTitle?: string | null;
+  siteName?: string | null;
+  siteDescription?: string | null;
+};
+
 export type GeneratedArticleDraft = {
   title: string;
   slug: string;
@@ -54,6 +63,12 @@ export type GeneratedAutomationSuggestions = {
   targetKeywords: string;
   siteContext: string;
   avoidTopics: string;
+  summary: string;
+};
+
+export type GeneratedPageSeoSuggestions = {
+  seoTitle: string;
+  seoDescription: string;
   summary: string;
 };
 
@@ -279,6 +294,81 @@ Kembalikan HANYA JSON valid dengan struktur:
       300
     ),
     summary: limitText(sanitizePlainText(String(parsed.summary || "")), 220),
+  };
+}
+
+export async function generatePageSeoSuggestions(
+  input: PageSeoSuggestionInput
+): Promise<GeneratedPageSeoSuggestions> {
+  const title = sanitizePlainText(input.title || "");
+  const slug = sanitizePlainText(input.slug || "");
+  const productTitle = sanitizePlainText(input.productTitle || "");
+  const htmlSource = input.contentHtml || "";
+  const plainText = limitText(stripHtml(htmlSource), 6000);
+
+  if (!htmlSource.trim() || !plainText) {
+    throw new Error("Konten HTML wajib diisi lebih dulu agar AI punya acuan.");
+  }
+
+  const prompt = `Analisa konten landing page / halaman berikut lalu buat metadata SEO yang relevan.
+
+Nama situs: ${input.siteName?.trim() || "AzkazamDigital"}
+Deskripsi situs: ${
+    input.siteDescription?.trim() ||
+    "Platform produk digital premium untuk kebutuhan bisnis online."
+  }
+Judul halaman saat ini: ${title || "-"}
+Slug halaman: ${slug || "-"}
+Produk terkait: ${productTitle || "-"}
+
+Cuplikan isi HTML yang sudah dibersihkan:
+${plainText}
+
+Tugas:
+- Buat 1 Judul SEO yang natural, menarik untuk pencarian Google, dan sesuai isi halaman.
+- Buat 1 Deskripsi SEO yang ringkas, jelas, dan mencerminkan isi landing page.
+- Jangan membuat judul clickbait atau terlalu generik.
+- Jika ada nama produk yang kuat, pertahankan secara natural.
+- Judul SEO ideal maksimal sekitar 60-70 karakter.
+- Deskripsi SEO ideal maksimal sekitar 150-170 karakter.
+- Fokus pada intent pencarian dan manfaat utama halaman.
+
+Kembalikan HANYA JSON valid dengan struktur:
+{
+  "seoTitle": "string",
+  "seoDescription": "string",
+  "summary": "1 kalimat singkat tentang angle SEO yang dipilih"
+}`;
+
+  const responseText = await callNvidiaChatCompletion([
+    {
+      role: "system",
+      content:
+        "Anda adalah spesialis SEO on-page untuk landing page bisnis digital Indonesia. Selalu balas HANYA dengan JSON valid tanpa markdown.",
+    },
+    {
+      role: "user",
+      content: prompt,
+    },
+  ]);
+
+  const parsed = parseJsonResponse(responseText);
+  const fallbackTitle = limitText(title || productTitle || slug, 70);
+  const fallbackDescription = limitText(plainText, 170);
+
+  return {
+    seoTitle: limitText(
+      sanitizePlainText(String(parsed.seoTitle || fallbackTitle)),
+      70
+    ),
+    seoDescription: limitText(
+      sanitizePlainText(String(parsed.seoDescription || fallbackDescription)),
+      170
+    ),
+    summary: limitText(
+      sanitizePlainText(String(parsed.summary || "")),
+      220
+    ),
   };
 }
 

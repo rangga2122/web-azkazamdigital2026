@@ -102,12 +102,13 @@ export default async function DynamicPage({
   if (!pageData) notFound();
   const page = await applyMenuContentSettings(pageData);
   const checkoutUrl = page.product
-    ? withReferral(`/order/${page.product.slug}`, ref)
+    ? withReferral(buildPublicUrl(`/order/${page.product.slug}`), ref)
     : "";
-  const pageUrl = withReferral(`/${page.slug}`, ref);
+  const pageUrl = withReferral(buildPublicUrl(`/${page.slug}`), ref);
   const contentHtml = applyPagePlaceholders(page.content_html || "", page, {
     checkoutUrl,
     pageUrl,
+    referralCode: ref,
   });
   const hasStandaloneHtml = page.content_html
     ? isStandaloneHtml(page.content_html)
@@ -171,9 +172,19 @@ function HidePublicChromeStyle() {
 function applyPagePlaceholders(
   html: string,
   page: Page,
-  urls: { checkoutUrl: string; pageUrl: string }
+  urls: { checkoutUrl: string; pageUrl: string; referralCode?: string }
 ) {
-  const withPlaceholders = html
+  const withScopedCheckoutUrls = html
+    .replace(
+      /\{\{CHECKOUT_URL:([a-z0-9-]+)\}\}/gi,
+      (_, slug: string) => escapeHtml(buildCheckoutUrlForSlug(slug, urls.referralCode))
+    )
+    .replace(
+      /\{\{ORDER_URL:([a-z0-9-]+)\}\}/gi,
+      (_, slug: string) => escapeHtml(buildCheckoutUrlForSlug(slug, urls.referralCode))
+    );
+
+  const withPlaceholders = withScopedCheckoutUrls
     .replaceAll("{{PAGE_TITLE}}", escapeHtml(page.title))
     .replaceAll("{{PAGE_URL}}", escapeHtml(urls.pageUrl))
     .replaceAll("{{CHECKOUT_URL}}", escapeHtml(urls.checkoutUrl))
@@ -186,8 +197,9 @@ function applyPagePlaceholders(
 
 function withReferral(url: string, ref?: string) {
   if (!ref || !url) return url;
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}ref=${encodeURIComponent(ref)}`;
+  const nextUrl = new URL(url, "https://www.azkazamdigital.com");
+  nextUrl.searchParams.set("ref", ref);
+  return nextUrl.toString();
 }
 
 function escapeHtml(value: string) {
@@ -205,6 +217,33 @@ function getSocialText(
 ) {
   const value = socialLinks[key];
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function buildCheckoutUrlForSlug(slug: string, ref?: string) {
+  const cleanSlug = slug.trim().toLowerCase();
+  if (!cleanSlug) {
+    return "";
+  }
+
+  return withReferral(buildPublicUrl(`/order/${cleanSlug}`), ref);
+}
+
+function buildPublicUrl(pathname: string) {
+  const baseUrl = resolvePublicSiteBaseUrl();
+  return new URL(pathname, baseUrl).toString();
+}
+
+function resolvePublicSiteBaseUrl() {
+  const envCandidates = [
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() || "",
+    process.env.NEXT_PUBLIC_APP_URL?.trim() || "",
+  ].filter(Boolean);
+
+  const preferred = envCandidates.find((value) =>
+    /azkazamdigital\.com/i.test(value)
+  );
+
+  return preferred || "https://www.azkazamdigital.com";
 }
 
 function normalizeStandaloneProductLinks(
