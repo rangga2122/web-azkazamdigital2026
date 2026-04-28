@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { PNG } from "pngjs";
-import jsQR from "jsQR";
+import jsQR from "jsqr";
 import QRCode from "qrcode";
 
 type TlvItem = {
