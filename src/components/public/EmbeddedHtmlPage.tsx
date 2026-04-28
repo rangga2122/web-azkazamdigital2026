@@ -1,24 +1,31 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
-import type { EmbeddedHtmlDocument, EmbeddedHtmlScript } from "@/lib/utils";
+import { useEffect, useRef } from "react";
+import {
+  buildScopedEmbeddedStyles,
+  type EmbeddedHtmlDocument,
+  type EmbeddedHtmlScript,
+} from "@/lib/utils";
 import type { CSSProperties, HTMLAttributes } from "react";
 
 type EmbeddedHtmlPageProps = {
   document: EmbeddedHtmlDocument;
+  scopeId: string;
 };
 
-export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
+export function EmbeddedHtmlPage({
+  document,
+  scopeId,
+}: EmbeddedHtmlPageProps) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const instanceId = useId().replace(/:/g, "-");
-  const scopeSelector = `[data-embedded-html-scope="${instanceId}"]`;
+  const scopeSelector = `[data-embedded-html-scope="${scopeId}"]`;
   const initialHostProps = buildInitialHostProps(document.bodyAttributes);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
 
-    host.setAttribute("data-embedded-html-scope", instanceId);
+    host.setAttribute("data-embedded-html-scope", scopeId);
     if (host.innerHTML !== document.bodyHtml) {
       host.innerHTML = document.bodyHtml;
     }
@@ -29,7 +36,7 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
     const cleanupTitle = syncDocumentTitle(document.title);
     const cleanupStyles = syncStyleAssets(
       document.styles,
-      instanceId,
+      scopeId,
       scopeSelector
     );
     const cleanupInternalAnchors = attachInternalAnchorNavigation(host);
@@ -55,7 +62,7 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
     document.scripts,
     document.styles,
     document.title,
-    instanceId,
+    scopeId,
     scopeSelector,
   ]);
 
@@ -63,7 +70,7 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
     <div
       ref={hostRef}
       {...initialHostProps}
-      data-embedded-html-scope={instanceId}
+      data-embedded-html-scope={scopeId}
       dangerouslySetInnerHTML={{ __html: document.bodyHtml }}
       suppressHydrationWarning
     />
@@ -186,7 +193,7 @@ function syncHeadAssets(headHtml: string) {
     const rel = sourceLink.getAttribute("rel");
     if (!href || !rel) return;
 
-    const existing = window.document.head.querySelector(
+    const existing = window.document.querySelector(
       `link[rel="${cssEscape(rel)}"][href="${cssEscape(href)}"]`
     );
 
@@ -221,159 +228,21 @@ function syncStyleAssets(
     return () => {};
   }
 
+  const existing = window.document.querySelector(
+    `style[data-embedded-html-style="${cssEscape(instanceId)}"]`
+  );
+  if (existing) {
+    return () => {};
+  }
+
   const style = window.document.createElement("style");
   style.setAttribute("data-embedded-html-style", instanceId);
-  style.textContent = `
-${scopeSelector} img {
-  display: inline-block;
-}
-
-${scopeEmbeddedStyles(styles, scopeSelector)}
-`;
+  style.textContent = buildScopedEmbeddedStyles(styles, scopeSelector);
   window.document.head.appendChild(style);
 
   return () => {
     style.remove();
   };
-}
-
-function scopeEmbeddedStyles(styles: string, scopeSelector: string) {
-  return transformCssBlocks(styles, scopeSelector);
-}
-
-function transformCssBlocks(css: string, scopeSelector: string): string {
-  let output = "";
-  let cursor = 0;
-
-  while (cursor < css.length) {
-    const openBrace = css.indexOf("{", cursor);
-    if (openBrace === -1) {
-      output += css.slice(cursor);
-      break;
-    }
-
-    const selectorChunk = css.slice(cursor, openBrace);
-    const closeBrace = findMatchingBrace(css, openBrace);
-
-    if (closeBrace === -1) {
-      output += css.slice(cursor);
-      break;
-    }
-
-    const blockContent = css.slice(openBrace + 1, closeBrace);
-    const trimmedSelector = selectorChunk.trim();
-
-    if (!trimmedSelector) {
-      output += `${selectorChunk}{${blockContent}}`;
-      cursor = closeBrace + 1;
-      continue;
-    }
-
-    if (
-      trimmedSelector.startsWith("@media") ||
-      trimmedSelector.startsWith("@supports") ||
-      trimmedSelector.startsWith("@container") ||
-      trimmedSelector.startsWith("@layer")
-    ) {
-      output += `${selectorChunk}{${transformCssBlocks(
-        blockContent,
-        scopeSelector
-      )}}`;
-      cursor = closeBrace + 1;
-      continue;
-    }
-
-    if (trimmedSelector.startsWith("@")) {
-      output += `${selectorChunk}{${blockContent}}`;
-      cursor = closeBrace + 1;
-      continue;
-    }
-
-    output += `${scopeSelectorList(
-      selectorChunk,
-      scopeSelector
-    )}{${blockContent}}`;
-    cursor = closeBrace + 1;
-  }
-
-  return output;
-}
-
-function findMatchingBrace(css: string, openBraceIndex: number) {
-  let depth = 0;
-
-  for (let index = openBraceIndex; index < css.length; index += 1) {
-    const char = css[index];
-
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return index;
-      }
-    }
-  }
-
-  return -1;
-}
-
-function scopeSelectorList(selectorText: string, scopeSelector: string) {
-  const selectors: string[] = [];
-  let current = "";
-  let depth = 0;
-
-  for (const char of selectorText) {
-    if (char === "(" || char === "[") depth += 1;
-    if (char === ")" || char === "]") depth -= 1;
-
-    if (char === "," && depth === 0) {
-      selectors.push(current);
-      current = "";
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current) {
-    selectors.push(current);
-  }
-
-  return selectors
-    .map((selector) => scopeSingleSelector(selector, scopeSelector))
-    .join(", ");
-}
-
-function scopeSingleSelector(selector: string, scopeSelector: string) {
-  const trimmedSelector = selector.trim();
-  if (!trimmedSelector) return trimmedSelector;
-
-  if (
-    trimmedSelector === "html" ||
-    trimmedSelector === "body" ||
-    trimmedSelector === ":root"
-  ) {
-    return scopeSelector;
-  }
-
-  if (trimmedSelector.includes(":root")) {
-    return trimmedSelector.replaceAll(":root", scopeSelector);
-  }
-
-  if (/^html(?=[\s.#:[>~+]|$)/.test(trimmedSelector)) {
-    return trimmedSelector.replace(/^html\b/, scopeSelector);
-  }
-
-  if (/^body(?=[\s.#:[>~+]|$)/.test(trimmedSelector)) {
-    return trimmedSelector.replace(/^body\b/, scopeSelector);
-  }
-
-  if (trimmedSelector.startsWith(scopeSelector)) {
-    return trimmedSelector;
-  }
-
-  return `${scopeSelector} ${trimmedSelector}`;
 }
 
 function cssEscape(value: string) {

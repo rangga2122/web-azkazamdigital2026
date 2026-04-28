@@ -5,6 +5,8 @@ import { EmbeddedHtmlPage } from "@/components/public/EmbeddedHtmlPage";
 import { AffiliateReferralTracker } from "@/components/public/AffiliateReferralTracker";
 import { ExternalHeadLinks } from "@/components/public/ExternalHeadLinks";
 import {
+  buildScopedEmbeddedStyles,
+  extractEmbeddedHeadLinks,
   formatPrice,
   isStandaloneHtml,
   prepareEmbeddedHtmlDocument,
@@ -117,13 +119,23 @@ export default async function DynamicPage({
 
   if (contentHtml && hasStandaloneHtml) {
     const embeddedPage = prepareEmbeddedHtmlDocument(contentHtml);
+    const scopeId = buildEmbeddedScopeId(page.slug);
+    const scopedStyles = buildScopedEmbeddedStyles(
+      embeddedPage.styles,
+      `[data-embedded-html-scope="${scopeId}"]`
+    );
+    const embeddedHeadLinks = extractEmbeddedHeadLinks(embeddedPage.headHtml);
 
     return (
       <div className="min-h-screen bg-white" data-hide-public-chrome={hidePublicChrome ? "true" : undefined}>
         {hidePublicChrome && <HidePublicChromeStyle />}
         {page.product && <AffiliateReferralTracker productSlug={page.product.slug} />}
-        <ExternalHeadLinks html={contentHtml} />
-        <EmbeddedHtmlPage document={embeddedPage} />
+        <EmbeddedHeadAssets
+          headLinks={embeddedHeadLinks}
+          scopeId={scopeId}
+          scopedStyles={scopedStyles}
+        />
+        <EmbeddedHtmlPage document={embeddedPage} scopeId={scopeId} />
       </div>
     );
   }
@@ -168,6 +180,60 @@ function HidePublicChromeStyle() {
       `}
     </style>
   );
+}
+
+function EmbeddedHeadAssets({
+  headLinks,
+  scopeId,
+  scopedStyles,
+}: {
+  headLinks: Array<{
+    rel: string;
+    href: string;
+    attributes: Record<string, string | true>;
+  }>;
+  scopeId: string;
+  scopedStyles: string;
+}) {
+  return (
+    <>
+      {headLinks.map((link, index) => (
+        <link
+          key={`${link.rel}-${link.href}-${index}`}
+          {...toDomAttributes(link.attributes)}
+        />
+      ))}
+      {scopedStyles ? (
+        <style
+          data-embedded-html-style={scopeId}
+          dangerouslySetInnerHTML={{ __html: scopedStyles }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function toDomAttributes(attributes: Record<string, string | true>) {
+  const reactAttributeMap: Record<string, string> = {
+    crossorigin: "crossOrigin",
+    referrerpolicy: "referrerPolicy",
+    fetchpriority: "fetchPriority",
+    hreflang: "hrefLang",
+    imagesizes: "imageSizes",
+    imagesrcset: "imageSrcSet",
+  };
+
+  return Object.fromEntries(
+    Object.entries(attributes).map(([name, value]) => [
+      reactAttributeMap[name.toLowerCase()] || name,
+      value === true ? "" : value,
+    ])
+  );
+}
+
+function buildEmbeddedScopeId(slug: string) {
+  const safeSlug = slug.replace(/[^a-z0-9-]/gi, "-").replace(/-+/g, "-");
+  return `embedded-html-${safeSlug || "page"}`;
 }
 
 function applyPagePlaceholders(

@@ -161,6 +161,12 @@ export type EmbeddedHtmlScript = {
   attributes: Record<string, string | true>;
 };
 
+export type EmbeddedHeadLink = {
+  rel: string;
+  href: string;
+  attributes: Record<string, string | true>;
+};
+
 export function prepareEmbeddedHtmlDocument(
   html: string
 ): EmbeddedHtmlDocument {
@@ -200,6 +206,52 @@ export function prepareEmbeddedHtmlDocument(
     bodyAttributes,
     title,
   };
+}
+
+export function extractEmbeddedHeadLinks(headHtml: string): EmbeddedHeadLink[] {
+  const links: EmbeddedHeadLink[] = [];
+  const seen = new Set<string>();
+
+  for (const match of headHtml.matchAll(/<link\b([^>]*)>/gi)) {
+    const attributes = parseHtmlAttributes(match[1] || "");
+    const rel = typeof attributes.rel === "string" ? attributes.rel : "";
+    const href = typeof attributes.href === "string" ? attributes.href : "";
+
+    if (!rel || !href) continue;
+
+    const key = `${rel}::${href}`;
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    links.push({
+      rel,
+      href,
+      attributes:
+        typeof attributes.media === "string" &&
+        attributes.media.toLowerCase() === "print"
+          ? { ...attributes, media: "all" }
+          : attributes,
+    });
+  }
+
+  return links;
+}
+
+export function buildScopedEmbeddedStyles(
+  styles: string,
+  scopeSelector: string
+) {
+  if (!styles.trim()) {
+    return "";
+  }
+
+  return `
+${scopeSelector} img {
+  display: inline-block;
+}
+
+${transformCssBlocks(styles, scopeSelector)}
+`.trim();
 }
 
 function optimizeEmbeddedMediaMarkup(html: string) {
@@ -372,6 +424,141 @@ function isSafeScriptSource(value: string) {
   if (normalizedValue.startsWith("data:text/html")) return false;
 
   return true;
+}
+
+function transformCssBlocks(css: string, scopeSelector: string) {
+  let output = "";
+  let cursor = 0;
+
+  while (cursor < css.length) {
+    const openBrace = css.indexOf("{", cursor);
+    if (openBrace === -1) {
+      output += css.slice(cursor);
+      break;
+    }
+
+    const selectorChunk = css.slice(cursor, openBrace);
+    const closeBrace = findMatchingBrace(css, openBrace);
+
+    if (closeBrace === -1) {
+      output += css.slice(cursor);
+      break;
+    }
+
+    const blockContent = css.slice(openBrace + 1, closeBrace);
+    const trimmedSelector = selectorChunk.trim();
+
+    if (!trimmedSelector) {
+      output += `${selectorChunk}{${blockContent}}`;
+      cursor = closeBrace + 1;
+      continue;
+    }
+
+    if (
+      trimmedSelector.startsWith("@media") ||
+      trimmedSelector.startsWith("@supports") ||
+      trimmedSelector.startsWith("@container") ||
+      trimmedSelector.startsWith("@layer")
+    ) {
+      output += `${selectorChunk}{${transformCssBlocks(
+        blockContent,
+        scopeSelector
+      )}}`;
+      cursor = closeBrace + 1;
+      continue;
+    }
+
+    if (trimmedSelector.startsWith("@")) {
+      output += `${selectorChunk}{${blockContent}}`;
+      cursor = closeBrace + 1;
+      continue;
+    }
+
+    output += `${scopeSelectorList(
+      selectorChunk,
+      scopeSelector
+    )}{${blockContent}}`;
+    cursor = closeBrace + 1;
+  }
+
+  return output;
+}
+
+function findMatchingBrace(css: string, openBraceIndex: number) {
+  let depth = 0;
+
+  for (let index = openBraceIndex; index < css.length; index += 1) {
+    const char = css[index];
+
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function scopeSelectorList(selectorText: string, scopeSelector: string) {
+  const selectors: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (const char of selectorText) {
+    if (char === "(" || char === "[") depth += 1;
+    if (char === ")" || char === "]") depth -= 1;
+
+    if (char === "," && depth === 0) {
+      selectors.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) {
+    selectors.push(current);
+  }
+
+  return selectors
+    .map((selector) => scopeSingleSelector(selector, scopeSelector))
+    .join(", ");
+}
+
+function scopeSingleSelector(selector: string, scopeSelector: string) {
+  const trimmedSelector = selector.trim();
+  if (!trimmedSelector) return trimmedSelector;
+
+  if (
+    trimmedSelector === "html" ||
+    trimmedSelector === "body" ||
+    trimmedSelector === ":root"
+  ) {
+    return scopeSelector;
+  }
+
+  if (trimmedSelector.includes(":root")) {
+    return trimmedSelector.replaceAll(":root", scopeSelector);
+  }
+
+  if (/^html(?=[\s.#:[>~+]|$)/.test(trimmedSelector)) {
+    return trimmedSelector.replace(/^html\b/, scopeSelector);
+  }
+
+  if (/^body(?=[\s.#:[>~+]|$)/.test(trimmedSelector)) {
+    return trimmedSelector.replace(/^body\b/, scopeSelector);
+  }
+
+  if (trimmedSelector.startsWith(scopeSelector)) {
+    return trimmedSelector;
+  }
+
+  return `${scopeSelector} ${trimmedSelector}`;
 }
 
 /**
