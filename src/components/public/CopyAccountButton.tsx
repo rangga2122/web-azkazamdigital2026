@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { copyTextToClipboard } from "@/lib/client-clipboard";
 import { FaCopy } from "react-icons/fa";
 
 type CopyAccountButtonProps = {
@@ -18,7 +19,7 @@ export function CopyAccountButton({
     }
 
     try {
-      await navigator.clipboard.writeText(accountNumber);
+      await copyTextToClipboard(accountNumber);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {

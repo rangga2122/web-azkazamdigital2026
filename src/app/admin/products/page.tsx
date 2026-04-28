@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { triggerAdminRevalidation } from "@/lib/admin-revalidate";
+import { copyTextToClipboard } from "@/lib/client-clipboard";
 import { createClient } from "@/lib/supabase/client";
 import { formatPrice, getProductCommissionLabel } from "@/lib/utils";
 import { FaCopy, FaExternalLinkAlt, FaImage, FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaEye } from "react-icons/fa";
@@ -38,7 +40,7 @@ export default function AdminProductsPage() {
     seo_title: "", seo_description: "",
   });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { void loadData(); }, []);
 
   async function loadData() {
     const supabase = createClient();
@@ -77,6 +79,7 @@ export default function AdminProductsPage() {
       return;
     }
     const supabase = createClient();
+    const previousTargetPath = editing ? resolveProductTargetPathForProduct(editing) : "";
     const payload = {
       ...form,
       click_target_page_id:
@@ -101,7 +104,16 @@ export default function AdminProductsPage() {
       }
       toast.success("Produk berhasil diperbarui!");
     }
-    setCreating(false); setEditing(null); loadData();
+    await triggerAdminRevalidation({
+      tags: ["public-pages"],
+      paths: compactPaths([
+        previousTargetPath,
+        resolvePreviewTargetPath(payload.click_target_type, payload.click_target_page_id, pages, payload.slug),
+        `/produk/${payload.slug}`,
+        `/order/${payload.slug}`,
+      ]),
+    });
+    setCreating(false); setEditing(null); await loadData();
   }
 
   async function handleDelete(id: string) {
@@ -110,7 +122,17 @@ export default function AdminProductsPage() {
     await supabase.from("product_categories").delete().eq("product_id", id);
     const { error } = await supabase.from("products").delete().eq("id", id);
     if (error) { toast.error(error.message); return; }
-    toast.success("Produk dihapus!"); loadData();
+    toast.success("Produk dihapus!");
+    const deletedProduct = products.find((product) => product.id === id);
+    await triggerAdminRevalidation({
+      tags: ["public-pages"],
+      paths: compactPaths([
+        deletedProduct ? resolveProductTargetPathForProduct(deletedProduct) : "",
+        deletedProduct?.slug ? `/produk/${deletedProduct.slug}` : "",
+        deletedProduct?.slug ? `/order/${deletedProduct.slug}` : "",
+      ]),
+    });
+    await loadData();
   }
 
   function setProductImage(field: "thumbnail_url" | "banner_url", path: string) {
@@ -162,8 +184,14 @@ export default function AdminProductsPage() {
     }
 
     const url = `${window.location.origin}${path}`;
-    await navigator.clipboard.writeText(url);
-    toast.success(message);
+    try {
+      await copyTextToClipboard(url);
+      toast.success(message);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Gagal menyalin tautan."
+      );
+    }
   }
 
   function openAbsolutePath(path: string) {
@@ -470,4 +498,24 @@ export default function AdminProductsPage() {
       )}
     </div>
   );
+}
+
+function compactPaths(paths: string[]) {
+  return paths.filter(Boolean);
+}
+
+function resolvePreviewTargetPath(
+  clickTargetType: Product["click_target_type"],
+  clickTargetPageId: string | null,
+  pages: Page[],
+  slug: string
+) {
+  if (clickTargetType === "cms_page" && clickTargetPageId) {
+    const page = pages.find((item) => item.id === clickTargetPageId);
+    if (page?.slug) {
+      return `/${page.slug}`;
+    }
+  }
+
+  return slug.trim() ? `/order/${slug.trim()}` : "";
 }

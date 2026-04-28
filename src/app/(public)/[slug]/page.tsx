@@ -173,13 +173,15 @@ function applyPagePlaceholders(
   page: Page,
   urls: { checkoutUrl: string; pageUrl: string }
 ) {
-  return html
+  const withPlaceholders = html
     .replaceAll("{{PAGE_TITLE}}", escapeHtml(page.title))
     .replaceAll("{{PAGE_URL}}", escapeHtml(urls.pageUrl))
     .replaceAll("{{CHECKOUT_URL}}", escapeHtml(urls.checkoutUrl))
     .replaceAll("{{ORDER_URL}}", escapeHtml(urls.checkoutUrl))
     .replaceAll("{{PRODUCT_TITLE}}", escapeHtml(page.product?.title || ""))
     .replaceAll("{{PRODUCT_PRICE}}", escapeHtml(page.product ? formatPrice(page.product.price) : ""));
+
+  return normalizeStandaloneProductLinks(withPlaceholders, page, urls);
 }
 
 function withReferral(url: string, ref?: string) {
@@ -203,4 +205,90 @@ function getSocialText(
 ) {
   const value = socialLinks[key];
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function normalizeStandaloneProductLinks(
+  html: string,
+  page: Page,
+  urls: { checkoutUrl: string; pageUrl: string }
+) {
+  if (!page.product || !urls.checkoutUrl) {
+    return html;
+  }
+
+  return html.replace(
+    /<a\b([^>]*?)href=(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi,
+    (match, beforeHref: string, quote: string, href: string, afterHref: string, innerHtml: string) => {
+      if (!shouldRewriteProductLink(href, innerHtml, beforeHref, afterHref, page, urls)) {
+        return match;
+      }
+
+      return `<a${beforeHref}href=${quote}${escapeHtml(urls.checkoutUrl)}${quote}${afterHref}>${innerHtml}</a>`;
+    }
+  );
+}
+
+function shouldRewriteProductLink(
+  href: string,
+  innerHtml: string,
+  beforeHref: string,
+  afterHref: string,
+  page: Page,
+  urls: { checkoutUrl: string; pageUrl: string }
+) {
+  const normalizedHref = href.trim();
+  if (!normalizedHref || normalizedHref.startsWith("#")) {
+    return false;
+  }
+
+  const text = stripHtml(innerHtml).toLowerCase();
+  const attrs = `${beforeHref} ${afterHref}`.toLowerCase();
+  const looksLikeCheckoutCta =
+    /\b(beli|pesan|order|checkout|daftar)\b/.test(text) ||
+    /\bbtn-primary\b|\bbtn-checkout\b/.test(attrs);
+
+  if (!looksLikeCheckoutCta) {
+    return false;
+  }
+
+  const candidates = new Set(
+    [
+      "/",
+      page.slug ? `/${page.slug}` : "",
+      urls.pageUrl,
+      removeQueryAndHash(urls.pageUrl),
+    ]
+      .map((value) => normalizeComparablePath(value))
+      .filter(Boolean)
+  );
+
+  return candidates.has(normalizeComparablePath(normalizedHref));
+}
+
+function stripHtml(value: string) {
+  return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function removeQueryAndHash(value: string) {
+  return value.replace(/[?#].*$/, "");
+}
+
+function normalizeComparablePath(value: string) {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return "";
+
+  if (trimmedValue.startsWith("#")) {
+    return trimmedValue;
+  }
+
+  try {
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "http://localhost:3000";
+    const url = new URL(trimmedValue, baseUrl);
+    return url.pathname.replace(/\/+$/, "") || "/";
+  } catch {
+    return trimmedValue.replace(/\/+$/, "") || "/";
+  }
 }

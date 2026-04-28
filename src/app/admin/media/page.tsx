@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { copyTextToClipboard } from "@/lib/client-clipboard";
 import { FaExternalLinkAlt, FaUpload, FaCopy, FaImage, FaTrash } from "react-icons/fa";
 import toast from "react-hot-toast";
 
@@ -80,9 +81,15 @@ export default function AdminMediaPage() {
     }
   }
 
-  function copyPath(path: string) {
-    navigator.clipboard.writeText(path);
-    toast.success("Tautan disalin!");
+  async function copyPath(path: string) {
+    try {
+      await copyTextToClipboard(path);
+      toast.success("Tautan disalin!");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Gagal menyalin tautan."
+      );
+    }
   }
 
   async function handleDelete(file: MediaFile) {

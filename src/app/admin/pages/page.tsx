@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { triggerAdminRevalidation } from "@/lib/admin-revalidate";
+import { copyTextToClipboard } from "@/lib/client-clipboard";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { FaCopy, FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaUpload, FaEye } from "react-icons/fa";
@@ -19,7 +21,7 @@ export default function AdminPagesPage() {
     product_id: "", hide_header_footer: false,
   });
 
-  useEffect(() => { loadPages(); }, []);
+  useEffect(() => { void loadPages(); }, []);
 
   async function loadPages() {
     const supabase = createClient();
@@ -56,6 +58,7 @@ export default function AdminPagesPage() {
   async function handleSave() {
     if (!form.title || !form.slug) { toast.error("Judul dan slug wajib diisi."); return; }
     const supabase = createClient();
+    const previousSlug = editing?.slug || "";
     const payload = {
       ...form,
       product_id: form.product_id || null,
@@ -70,8 +73,12 @@ export default function AdminPagesPage() {
       if (error) { toast.error(error.message); return; }
       toast.success("Halaman berhasil diperbarui!");
     }
+    await triggerAdminRevalidation({
+      tags: ["public-pages"],
+      paths: compactPaths([`/${previousSlug}`, `/${payload.slug}`]),
+    });
     cancel();
-    loadPages();
+    await loadPages();
   }
 
   async function handleDelete(id: string) {
@@ -80,14 +87,19 @@ export default function AdminPagesPage() {
     const { error } = await supabase.from("pages").delete().eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Halaman berhasil dihapus!");
-    loadPages();
+    const deletedPage = pages.find((page) => page.id === id);
+    await triggerAdminRevalidation({
+      tags: ["public-pages"],
+      paths: compactPaths([deletedPage ? `/${deletedPage.slug}` : ""]),
+    });
+    await loadPages();
   }
 
   async function handleImportHtml(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await file.text();
-    setForm({ ...form, content_html: text });
+    setForm((current) => ({ ...current, content_html: text }));
     toast.success("File HTML berhasil diimport!");
   }
 
@@ -107,8 +119,14 @@ export default function AdminPagesPage() {
       return;
     }
 
-    await navigator.clipboard.writeText(`${window.location.origin}${path}`);
-    toast.success(message);
+    try {
+      await copyTextToClipboard(`${window.location.origin}${path}`);
+      toast.success(message);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Gagal menyalin tautan."
+      );
+    }
   }
 
   if (editing || creating) {
@@ -311,4 +329,8 @@ export default function AdminPagesPage() {
       )}
     </div>
   );
+}
+
+function compactPaths(paths: string[]) {
+  return paths.filter(Boolean);
 }

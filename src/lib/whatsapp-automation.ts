@@ -118,6 +118,10 @@ export async function createWhatsappBroadcast(args: {
     throw new Error("Notifikasi WhatsApp belum aktif.");
   }
 
+  if (config.broadcastStatuses.length === 0) {
+    throw new Error("Pilih minimal satu status order untuk broadcast.");
+  }
+
   const { data: activeBroadcast } = await supabase
     .from("whatsapp_broadcasts")
     .select("id, status")

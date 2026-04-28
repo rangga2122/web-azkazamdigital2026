@@ -691,7 +691,11 @@ export default function AdminWhatsappPage() {
                   <button
                     type="button"
                     onClick={() => void handleAutomationAction("start-broadcast")}
-                    disabled={!canRunAutomation || automationBusy}
+                    disabled={
+                      !canRunAutomation ||
+                      automationBusy ||
+                      config.broadcastStatuses.length === 0
+                    }
                     className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <FaPlay size={14} />
@@ -780,6 +784,13 @@ export default function AdminWhatsappPage() {
                       );
                     })}
                   </div>
+                  <p className="mt-2 text-xs leading-5 text-dark-500">
+                    {config.broadcastStatuses.length > 0
+                      ? `Filter aktif: ${config.broadcastStatuses
+                          .map((status) => STATUS_OPTIONS.find((item) => item.value === status)?.label || status)
+                          .join(", ")}`
+                      : "Belum ada status yang dipilih. Broadcast tidak bisa dimulai."}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -819,6 +830,34 @@ export default function AdminWhatsappPage() {
                     type="number"
                     min={1}
                   />
+                </div>
+
+                <div className="rounded-2xl border border-dark-800 bg-dark-950/50 px-4 py-3 text-sm leading-6 text-dark-300">
+                  <div className="font-semibold text-white">Ringkasan filter broadcast</div>
+                  <div className="mt-1">
+                    Mengambil pelanggan unik berdasarkan nomor WhatsApp dari order dengan status{" "}
+                    <strong className="text-white">
+                      {config.broadcastStatuses.length > 0
+                        ? config.broadcastStatuses
+                            .map((status) => STATUS_OPTIONS.find((item) => item.value === status)?.label || status)
+                            .join(", ")
+                        : "belum dipilih"}
+                    </strong>
+                    {config.broadcastDateFrom || config.broadcastDateTo ? (
+                      <>
+                        {" "}pada rentang{" "}
+                        <strong className="text-white">
+                          {formatDateRangeSummary(
+                            config.broadcastDateFrom,
+                            config.broadcastDateTo
+                          )}
+                        </strong>
+                      </>
+                    ) : (
+                      <> dari semua tanggal order</>
+                    )}
+                    .
+                  </div>
                 </div>
               </div>
             </div>
@@ -874,6 +913,9 @@ export default function AdminWhatsappPage() {
                     <div className="mt-1 text-xs text-dark-400">
                       Dimulai {formatDateTime(dashboard.activeBroadcast.started_at)}
                     </div>
+                    <div className="mt-1 text-xs text-dark-400">
+                      {describeBroadcastFilters(dashboard.activeBroadcast)}
+                    </div>
                   </div>
                   <div className="text-sm text-dark-300">
                     {dashboard.activeBroadcast.current_index} /{" "}
@@ -921,7 +963,12 @@ export default function AdminWhatsappPage() {
                     className="grid grid-cols-[1.2fr_0.7fr_0.7fr_0.7fr_1fr] items-center border-t border-dark-800 px-4 py-3 text-sm text-dark-300"
                   >
                     <div className="truncate">
-                      {broadcast.template.slice(0, 70) || "Tanpa template"}
+                      <div className="truncate">
+                        {broadcast.template.slice(0, 70) || "Tanpa template"}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-dark-500">
+                        {describeBroadcastFilters(broadcast)}
+                      </div>
                     </div>
                     <div>{statusLabelBroadcast(broadcast.status)}</div>
                     <div>{broadcast.sent_count}</div>
@@ -1369,6 +1416,35 @@ function formatDateTime(value: string | null | undefined) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("id-ID");
+}
+
+function formatDateRangeSummary(dateFrom?: string | null, dateTo?: string | null) {
+  if (dateFrom && dateTo) {
+    return `${dateFrom} s/d ${dateTo}`;
+  }
+
+  if (dateFrom) {
+    return `sejak ${dateFrom}`;
+  }
+
+  if (dateTo) {
+    return `hingga ${dateTo}`;
+  }
+
+  return "semua tanggal";
+}
+
+function describeBroadcastFilters(broadcast: WhatsappBroadcast) {
+  const statuses =
+    broadcast.filter_statuses && broadcast.filter_statuses.length > 0
+      ? broadcast.filter_statuses.join(", ")
+      : "tanpa status";
+  const dateSummary = formatDateRangeSummary(
+    broadcast.filter_date_from,
+    broadcast.filter_date_to
+  );
+
+  return `Status: ${statuses} | Tanggal: ${dateSummary}`;
 }
 
 function statusLabelBroadcast(status: string) {

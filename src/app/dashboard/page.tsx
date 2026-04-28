@@ -24,6 +24,7 @@ import {
   getStatusColor,
   getStatusLabel,
 } from "@/lib/utils";
+import { copyTextToClipboard } from "@/lib/client-clipboard";
 import type {
   Affiliate,
   AffiliateLink,
@@ -405,8 +406,14 @@ export default function UserDashboardPage() {
   }
 
   async function copyLink(path: string) {
-    await navigator.clipboard.writeText(`${window.location.origin}${path}`);
-    toast.success("Link berhasil disalin.");
+    try {
+      await copyTextToClipboard(`${window.location.origin}${path}`);
+      toast.success("Link berhasil disalin.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Gagal menyalin link."
+      );
+    }
   }
 
   function buildLandingPageAffiliatePath(page: Page, referralCode: string) {

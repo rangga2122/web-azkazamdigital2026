@@ -830,7 +830,7 @@ function normalizeStatuses(
       typeof item === "string" && allowed.includes(item as WhatsappStatus)
   );
 
-  return result.length > 0 ? [...new Set(result)] : [...fallback];
+  return [...new Set(result)];
 }
 
 function toBoolean(value: unknown, fallback: boolean) {

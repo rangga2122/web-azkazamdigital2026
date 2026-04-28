@@ -26,6 +26,7 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
       instanceId,
       scopeSelector
     );
+    const cleanupInternalAnchors = attachInternalAnchorNavigation(host);
     const cleanupScripts = executeEmbeddedScripts(host, document.scripts);
     const cleanupFallbackInteractions =
       document.scripts.length === 0
@@ -35,6 +36,7 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
     return () => {
       cleanupScripts();
       cleanupFallbackInteractions();
+      cleanupInternalAnchors();
       cleanupStyles();
       cleanupHeadAssets();
       host.innerHTML = "";
@@ -332,6 +334,88 @@ function attachFallbackInteractions(root: HTMLElement) {
       anchor.removeEventListener("click", handler);
     });
   };
+}
+
+function attachInternalAnchorNavigation(root: HTMLElement) {
+  const anchorHandlers = new Map<
+    HTMLAnchorElement,
+    (event: MouseEvent) => void
+  >();
+
+  root.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((anchor) => {
+    const handler = (event: MouseEvent) => {
+      const targetId = anchor.getAttribute("href");
+      if (!targetId || targetId === "#") return;
+
+      const target =
+        root.querySelector<HTMLElement>(targetId) ||
+        window.document.querySelector<HTMLElement>(targetId);
+      if (!target) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      scrollEmbeddedTargetIntoView(target, root);
+    };
+
+    anchorHandlers.set(anchor, handler);
+    anchor.addEventListener("click", handler, true);
+  });
+
+  return () => {
+    anchorHandlers.forEach((handler, anchor) => {
+      anchor.removeEventListener("click", handler, true);
+    });
+  };
+}
+
+function scrollEmbeddedTargetIntoView(target: HTMLElement, root: HTMLElement) {
+  const scrollContainer = findScrollableContainer(target, root);
+
+  if (scrollContainer) {
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const top =
+      targetRect.top - containerRect.top + scrollContainer.scrollTop - 16;
+
+    scrollContainer.scrollTo({
+      top: Math.max(0, top),
+      behavior: "smooth",
+    });
+    return;
+  }
+
+  const top = target.getBoundingClientRect().top + window.scrollY - 16;
+  window.scrollTo({
+    top: Math.max(0, top),
+    behavior: "smooth",
+  });
+}
+
+function findScrollableContainer(
+  target: HTMLElement,
+  root: HTMLElement
+): HTMLElement | null {
+  let current: HTMLElement | null = target.parentElement;
+
+  while (current) {
+    const style = window.getComputedStyle(current);
+    const overflowY = style.overflowY.toLowerCase();
+    const canScroll =
+      (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") &&
+      current.scrollHeight > current.clientHeight;
+
+    if (canScroll) {
+      return current;
+    }
+
+    if (current === root) {
+      break;
+    }
+
+    current = current.parentElement;
+  }
+
+  return null;
 }
 
 function executeEmbeddedScripts(
