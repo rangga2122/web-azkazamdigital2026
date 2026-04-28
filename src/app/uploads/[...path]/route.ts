@@ -27,7 +27,8 @@ export async function GET(
       headers: {
         "Content-Type": response.contentType,
         "Content-Length": response.size.toString(),
-        "Cache-Control": "public, max-age=0, must-revalidate",
+        "Cache-Control": buildUploadCacheControl(pathParts),
+        "Last-Modified": response.lastModified,
       },
     });
   } catch {
@@ -51,7 +52,8 @@ export async function HEAD(
       headers: {
         "Content-Type": response.contentType,
         "Content-Length": response.size.toString(),
-        "Cache-Control": "public, max-age=0, must-revalidate",
+        "Cache-Control": buildUploadCacheControl(pathParts),
+        "Last-Modified": response.lastModified,
       },
     });
   } catch {
@@ -77,5 +79,17 @@ async function readUploadFile(pathParts: string[], includeBody = true) {
     buffer: includeBody ? await readFile(absolutePath) : null,
     contentType,
     size: info.size,
+    lastModified: info.mtime.toUTCString(),
   };
+}
+
+function buildUploadCacheControl(pathParts: string[]) {
+  const filename = pathParts[pathParts.length - 1] || "";
+  const looksVersioned = /^[0-9a-f-]{20,}\.[a-z0-9]+$/i.test(filename);
+
+  if (looksVersioned) {
+    return "public, max-age=31536000, immutable";
+  }
+
+  return "public, max-age=86400, stale-while-revalidate=604800";
 }

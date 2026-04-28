@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef } from "react";
 import type { EmbeddedHtmlDocument, EmbeddedHtmlScript } from "@/lib/utils";
+import type { CSSProperties, HTMLAttributes } from "react";
 
 type EmbeddedHtmlPageProps = {
   document: EmbeddedHtmlDocument;
@@ -11,13 +12,16 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const instanceId = useId().replace(/:/g, "-");
   const scopeSelector = `[data-embedded-html-scope="${instanceId}"]`;
+  const initialHostProps = buildInitialHostProps(document.bodyAttributes);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
 
     host.setAttribute("data-embedded-html-scope", instanceId);
-    host.innerHTML = document.bodyHtml;
+    if (host.innerHTML !== document.bodyHtml) {
+      host.innerHTML = document.bodyHtml;
+    }
     applyHostAttributes(host, document.bodyAttributes);
     ensureLegacyScriptTargets(host);
 
@@ -58,10 +62,64 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
   return (
     <div
       ref={hostRef}
-      className="block w-full bg-white"
+      {...initialHostProps}
+      data-embedded-html-scope={instanceId}
+      dangerouslySetInnerHTML={{ __html: document.bodyHtml }}
       suppressHydrationWarning
     />
   );
+}
+
+function buildInitialHostProps(
+  attributes: Record<string, string | true>
+): HTMLAttributes<HTMLDivElement> {
+  const props: HTMLAttributes<HTMLDivElement> = {
+    className: "block w-full bg-white",
+  };
+
+  const className = typeof attributes.class === "string" ? attributes.class : "";
+  if (className) {
+    props.className = `${props.className} ${className}`.trim();
+  }
+
+  const styleText = typeof attributes.style === "string" ? attributes.style : "";
+  if (styleText) {
+    props.style = parseInlineStyle(styleText);
+  }
+
+  for (const [name, value] of Object.entries(attributes)) {
+    if (name === "class" || name === "style" || name === "id") continue;
+
+    if (value === true) {
+      props[name as keyof HTMLAttributes<HTMLDivElement>] = "";
+      continue;
+    }
+
+    props[name as keyof HTMLAttributes<HTMLDivElement>] = value;
+  }
+
+  return props;
+}
+
+function parseInlineStyle(styleText: string): CSSProperties {
+  const style: CSSProperties = {};
+  const styleMap = style as Record<string, string>;
+
+  styleText.split(";").forEach((declaration) => {
+    const [rawProperty, ...rawValueParts] = declaration.split(":");
+    const property = rawProperty?.trim();
+    const value = rawValueParts.join(":").trim();
+
+    if (!property || !value) return;
+
+    const camelProperty = property.replace(/-([a-z])/g, (_, char: string) =>
+      char.toUpperCase()
+    );
+
+    styleMap[camelProperty] = value;
+  });
+
+  return style;
 }
 
 function syncDocumentTitle(title: string | null) {

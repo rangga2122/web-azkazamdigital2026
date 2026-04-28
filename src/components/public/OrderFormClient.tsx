@@ -202,6 +202,7 @@ export function OrderFormClient({
               src={product.thumbnail_url}
               alt={product.title}
               className="h-16 w-16 rounded-[8px] object-cover"
+              decoding="async"
             />
           ) : (
             <div className="flex h-16 w-16 items-center justify-center rounded-[8px] bg-blue-600 text-xl font-bold text-white">
@@ -295,6 +296,8 @@ export function OrderFormClient({
               src="/bank-transfer-qris.jpg"
               alt="Bank Transfer"
               className="h-8 w-14 rounded-[2px] object-contain"
+              loading="lazy"
+              decoding="async"
             />
             <span className="text-base font-semibold text-slate-950">
               Bank Transfer/QRIS

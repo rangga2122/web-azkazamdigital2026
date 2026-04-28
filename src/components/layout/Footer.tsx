@@ -1,23 +1,42 @@
 import Link from "next/link";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { unstable_cache } from "next/cache";
+
+const getCachedFooterSettings = unstable_cache(
+  async function getFooterSettings() {
+    try {
+      const supabase = await createServiceRoleClient();
+      const { data } = await supabase
+        .from("site_settings")
+        .select("site_name, logo_url, description, footer_text, social_links")
+        .limit(1)
+        .single();
+
+      return {
+        siteName: data?.site_name || "AzkazamDigital",
+        logoUrl: data?.logo_url || null,
+        description:
+          data?.description ||
+          "Platform produk digital premium untuk membantu Anda sukses di dunia digital.",
+        footerText: data?.footer_text || null,
+      };
+    } catch {
+      return {
+        siteName: "AzkazamDigital",
+        logoUrl: null,
+        description:
+          "Platform produk digital premium untuk membantu Anda sukses di dunia digital.",
+        footerText: null,
+      };
+    }
+  },
+  ["public-footer-settings"],
+  { revalidate: 60, tags: ["public-pages"] }
+);
 
 async function getFooterSettings() {
   try {
-    const supabase = await createServiceRoleClient();
-    const { data } = await supabase
-      .from("site_settings")
-      .select("site_name, logo_url, description, footer_text, social_links")
-      .limit(1)
-      .single();
-
-    return {
-      siteName: data?.site_name || "AzkazamDigital",
-      logoUrl: data?.logo_url || null,
-      description:
-        data?.description ||
-        "Platform produk digital premium untuk membantu Anda sukses di dunia digital.",
-      footerText: data?.footer_text || null,
-    };
+    return await getCachedFooterSettings();
   } catch {
     return {
       siteName: "AzkazamDigital",

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { unstable_cache } from "next/cache";
 import {
   FaArrowRight,
   FaCheckCircle,
@@ -11,47 +12,57 @@ import type { Product, Testimonial, FAQ } from "@/types";
 import { formatPrice } from "@/lib/utils";
 import { resolveHomeTexts } from "@/lib/home-texts";
 
-export const dynamic = "force-dynamic";
+const getCachedHomeData = unstable_cache(
+  async function getHomeData() {
+    try {
+      const supabase = await createServiceRoleClient();
+
+      const [productsRes, testimonialsRes, faqsRes, settingsRes] = await Promise.all([
+        supabase
+          .from("products")
+          .select("*, click_target_page:pages!products_click_target_page_id_fkey(id,title,slug)")
+          .eq("is_active", true)
+          .eq("is_featured", true)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("testimonials")
+          .select("*")
+          .eq("is_active", true)
+          .order("sort_order")
+          .limit(5),
+        supabase
+          .from("faqs")
+          .select("*")
+          .eq("is_active", true)
+          .order("sort_order")
+          .limit(6),
+        supabase
+          .from("site_settings")
+          .select("hero_title, hero_subtitle, primary_cta_label, primary_cta_url, social_links")
+          .limit(1)
+          .single(),
+      ]);
+
+      return {
+        products: (productsRes.data || []) as Product[],
+        testimonials: (testimonialsRes.data || []) as Testimonial[],
+        faqs: (faqsRes.data || []) as FAQ[],
+        texts: resolveHomeTexts(
+          settingsRes.data?.social_links as Record<string, unknown> | null,
+          settingsRes.data
+        ),
+      };
+    } catch {
+      return { products: [], testimonials: [], faqs: [], texts: resolveHomeTexts() };
+    }
+  },
+  ["public-homepage"],
+  { revalidate: 60, tags: ["public-pages"] }
+);
 
 async function getHomeData() {
   try {
-    const supabase = await createServiceRoleClient();
-
-    const [productsRes, testimonialsRes, faqsRes, settingsRes] = await Promise.all([
-      supabase
-        .from("products")
-        .select("*, click_target_page:pages!products_click_target_page_id_fkey(id,title,slug)")
-        .eq("is_active", true)
-        .order("is_featured", { ascending: false })
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("testimonials")
-        .select("*")
-        .eq("is_active", true)
-        .order("sort_order")
-        .limit(5),
-      supabase
-        .from("faqs")
-        .select("*")
-        .eq("is_active", true)
-        .order("sort_order")
-        .limit(6),
-      supabase
-        .from("site_settings")
-        .select("hero_title, hero_subtitle, primary_cta_label, primary_cta_url, social_links")
-        .limit(1)
-        .single(),
-    ]);
-
-    return {
-      products: (productsRes.data || []) as Product[],
-      testimonials: (testimonialsRes.data || []) as Testimonial[],
-      faqs: (faqsRes.data || []) as FAQ[],
-      texts: resolveHomeTexts(
-        settingsRes.data?.social_links as Record<string, unknown> | null,
-        settingsRes.data
-      ),
-    };
+    return await getCachedHomeData();
   } catch {
     return { products: [], testimonials: [], faqs: [], texts: resolveHomeTexts() };
   }
@@ -322,6 +333,8 @@ function HomeProductCard({
               src={product.thumbnail_url}
               alt={product.title}
               className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+              loading="lazy"
+              decoding="async"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#e9f8ff,#ffffff)]">

@@ -33,6 +33,8 @@ export function ProductCard({ product }: ProductCardProps) {
             src={product.thumbnail_url}
             alt={product.title}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+            loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-dark-800 to-dark-900">

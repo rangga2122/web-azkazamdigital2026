@@ -7,6 +7,7 @@ import { CustomScripts } from "@/components/tracking/CustomScripts";
 import { ThemeModeSync } from "@/components/ui/ThemeModeSync";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
+import { unstable_cache } from "next/cache";
 
 const fallbackMetadata: Metadata = {
   title: {
@@ -51,25 +52,44 @@ type RootSiteSettings = {
 
 const DEFAULT_FAVICON = "/icon.png";
 
+const getCachedRootSiteSettings = unstable_cache(
+  async function getRootSiteSettings(): Promise<RootSiteSettings> {
+    try {
+      const supabase = await createServiceRoleClient();
+      const { data } = await supabase
+        .from("site_settings")
+        .select("site_name, description, favicon_url, logo_url, social_links")
+        .limit(1)
+        .single();
+      const themeMode = (data?.social_links as Record<string, string> | null)?.theme_mode;
+
+      return {
+        siteName: data?.site_name || "AzkazamDigital",
+        description:
+          data?.description ||
+          "Platform penjualan produk digital premium dengan sistem afiliasi lengkap. Template, ebook, tools, dan kursus online berkualitas tinggi.",
+        faviconUrl: data?.favicon_url || null,
+        logoUrl: data?.logo_url || null,
+        themeMode: themeMode === "light" ? "light" : "dark",
+      };
+    } catch {
+      return {
+        siteName: "AzkazamDigital",
+        description:
+          "Platform penjualan produk digital premium dengan sistem afiliasi lengkap. Template, ebook, tools, dan kursus online berkualitas tinggi.",
+        faviconUrl: null,
+        logoUrl: null,
+        themeMode: "dark",
+      };
+    }
+  },
+  ["root-site-settings"],
+  { revalidate: 60, tags: ["public-pages"] }
+);
+
 async function getRootSiteSettings(): Promise<RootSiteSettings> {
   try {
-    const supabase = await createServiceRoleClient();
-    const { data } = await supabase
-      .from("site_settings")
-      .select("site_name, description, favicon_url, logo_url, social_links")
-      .limit(1)
-      .single();
-    const themeMode = (data?.social_links as Record<string, string> | null)?.theme_mode;
-
-    return {
-      siteName: data?.site_name || "AzkazamDigital",
-      description:
-        data?.description ||
-        "Platform penjualan produk digital premium dengan sistem afiliasi lengkap. Template, ebook, tools, dan kursus online berkualitas tinggi.",
-      faviconUrl: data?.favicon_url || null,
-      logoUrl: data?.logo_url || null,
-      themeMode: themeMode === "light" ? "light" : "dark",
-    };
+    return await getCachedRootSiteSettings();
   } catch {
     return {
       siteName: "AzkazamDigital",

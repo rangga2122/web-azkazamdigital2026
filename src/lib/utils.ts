@@ -181,9 +181,11 @@ export function prepareEmbeddedHtmlDocument(
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<link\b[^>]*>/gi, "");
-  const bodyHtml = sanitizeAllowedMarkup(bodyWithoutHeadAssets, {
-    allowEventHandlers: true,
-  });
+  const bodyHtml = optimizeEmbeddedMediaMarkup(
+    sanitizeAllowedMarkup(bodyWithoutHeadAssets, {
+      allowEventHandlers: true,
+    })
+  );
   const scripts = extractEmbeddedScripts(html);
   const bodyAttributes = bodyTagMatch
     ? parseHtmlAttributes(bodyTagMatch[1] || "")
@@ -198,6 +200,40 @@ export function prepareEmbeddedHtmlDocument(
     bodyAttributes,
     title,
   };
+}
+
+function optimizeEmbeddedMediaMarkup(html: string) {
+  let imageIndex = 0;
+
+  const optimizedImages = html.replace(/<img\b([^>]*)>/gi, (match, rawAttributes: string) => {
+    imageIndex += 1;
+    let nextTag = match;
+
+    if (!/\bdecoding\s*=/i.test(rawAttributes)) {
+      nextTag = nextTag.replace(/>$/, ' decoding="async">');
+    }
+
+    if (!/\bloading\s*=/i.test(rawAttributes)) {
+      nextTag = nextTag.replace(
+        />$/,
+        imageIndex === 1 ? ' loading="eager">' : ' loading="lazy">'
+      );
+    }
+
+    if (imageIndex === 1 && !/\bfetchpriority\s*=/i.test(rawAttributes)) {
+      nextTag = nextTag.replace(/>$/, ' fetchpriority="high">');
+    }
+
+    return nextTag;
+  });
+
+  return optimizedImages.replace(/<iframe\b([^>]*)>/gi, (match, rawAttributes: string) => {
+    if (/\bloading\s*=/i.test(rawAttributes)) {
+      return match;
+    }
+
+    return match.replace(/>$/, ' loading="lazy">');
+  });
 }
 
 function extractDocumentTitle(html: string) {
