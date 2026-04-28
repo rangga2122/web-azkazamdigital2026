@@ -17,9 +17,11 @@ export type OrderFormSettings = {
 export function OrderFormClient({
   product,
   settings,
+  previewUniqueCode,
 }: {
   product: Product;
   settings: OrderFormSettings;
+  previewUniqueCode: number;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -38,7 +40,6 @@ export function OrderFormClient({
     buyer_whatsapp: "",
     coupon_code: "",
   });
-  const [previewUniqueCode] = useState(() => generatePreviewUniqueCode());
   const referralCodeFromQuery = searchParams.get("ref")?.trim().toUpperCase() || null;
   const previewDiscount = appliedCoupon?.discount_amount || 0;
   const previewBaseTotal = Math.max(product.price - previewDiscount, 0);
@@ -357,10 +358,6 @@ export function OrderFormClient({
       </form>
     </div>
   );
-}
-
-function generatePreviewUniqueCode() {
-  return Math.floor(Math.random() * 51) + 50;
 }
 
 function TextInput({

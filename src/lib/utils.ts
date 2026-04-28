@@ -585,6 +585,19 @@ export function generateOrderCode(): string {
   return `ORD-${y}${m}${d}-${rand}`;
 }
 
+export function generateUniquePaymentCode(): number {
+  return Math.floor(Math.random() * 51) + 50;
+}
+
+export function normalizeUniquePaymentCode(value?: number | null): number {
+  const numericValue = Number(value);
+  if (Number.isInteger(numericValue) && numericValue >= 50 && numericValue <= 100) {
+    return numericValue;
+  }
+
+  return generateUniquePaymentCode();
+}
+
 /**
  * Generate a unique referral code from name
  */

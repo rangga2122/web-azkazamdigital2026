@@ -4,7 +4,10 @@ import {
   createServiceRoleClient,
 } from "@/lib/supabase/server";
 import { sendOrderInvoiceEmail } from "@/lib/email";
-import { generateOrderCode } from "@/lib/utils";
+import {
+  generateOrderCode,
+  normalizeUniquePaymentCode,
+} from "@/lib/utils";
 import {
   ensureWhatsappAutomationLoop,
   syncOrderWhatsappFollowups,
@@ -303,19 +306,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function generateUniquePaymentCode() {
-  return Math.floor(Math.random() * 51) + 50;
-}
-
-function normalizeUniquePaymentCode(value?: number | null) {
-  const numericValue = Number(value);
-  if (Number.isInteger(numericValue) && numericValue >= 50 && numericValue <= 100) {
-    return numericValue;
-  }
-
-  return generateUniquePaymentCode();
 }
 
 function isCouponUsable(coupon: CouponRow) {

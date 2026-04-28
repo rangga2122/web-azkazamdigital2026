@@ -2,6 +2,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { OrderFormClient } from "@/components/public/OrderFormClient";
 import { AffiliateReferralTracker } from "@/components/public/AffiliateReferralTracker";
+import { generateUniquePaymentCode } from "@/lib/utils";
 import type { Product } from "@/types";
 import type { Metadata } from "next";
 
@@ -54,6 +55,7 @@ export default async function OrderPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const previewUniqueCode = generateUniquePaymentCode();
   const [product, settings] = await Promise.all([
     getProduct(slug),
     getCheckoutSettings(),
@@ -65,7 +67,11 @@ export default async function OrderPage({
       {settings.hide_checkout_chrome && <HidePublicChromeStyle />}
       <AffiliateReferralTracker productSlug={product.slug} />
       <div className="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8">
-        <OrderFormClient product={product} settings={settings} />
+        <OrderFormClient
+          product={product}
+          settings={settings}
+          previewUniqueCode={previewUniqueCode}
+        />
       </div>
     </div>
   );
