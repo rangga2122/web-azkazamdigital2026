@@ -42,6 +42,18 @@ export default async function PublicLayout({
   return (
     <>
       <PublicChromeController />
+      <style>
+        {`
+          body:has([data-hide-public-chrome="true"]) [data-public-header],
+          body:has([data-hide-public-chrome="true"]) [data-public-footer],
+          body:has([data-hide-public-chrome="true"]) [data-whatsapp-float],
+          body[data-hide-route-chrome="true"] [data-public-header],
+          body[data-hide-route-chrome="true"] [data-public-footer],
+          body[data-hide-route-chrome="true"] [data-whatsapp-float] {
+            display: none !important;
+          }
+        `}
+      </style>
       <div data-public-header>
         <Navbar
           siteName={settings.siteName}

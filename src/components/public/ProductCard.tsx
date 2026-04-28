@@ -7,6 +7,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product }: ProductCardProps) {
+  const productTargetHref = resolveProductTargetHref(product);
   const discount = product.compare_at_price
     ? Math.round(
         ((product.compare_at_price - product.price) / product.compare_at_price) *
@@ -76,7 +77,7 @@ export function ProductCard({ product }: ProductCardProps) {
         {/* Actions */}
         <div className="flex gap-2">
           <Link
-            href={`/produk/${product.slug}`}
+            href={productTargetHref}
             className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 text-white text-sm font-semibold text-center shadow-lg shadow-primary-500/20 hover:shadow-primary-500/40 transition-all duration-300 hover:scale-[1.02]"
           >
             Lihat Produk
@@ -91,4 +92,19 @@ export function ProductCard({ product }: ProductCardProps) {
       </div>
     </div>
   );
+}
+
+function resolveProductTargetHref(product: Product) {
+  if (
+    product.click_target_type === "cms_page" &&
+    product.click_target_page?.slug
+  ) {
+    return `/${product.click_target_page.slug}`;
+  }
+
+  if (product.click_target_type === "checkout") {
+    return `/order/${product.slug}`;
+  }
+
+  return `/produk/${product.slug}`;
 }

@@ -33,7 +33,14 @@ function removeUnsafeBlocks(html: string) {
     .replace(/<!--[\s\S]*?-->/g, '');
 }
 
-function cleanTagAttributes(rawAttributes: string) {
+type SanitizeOptions = {
+  allowEventHandlers?: boolean;
+};
+
+function cleanTagAttributes(
+  rawAttributes: string,
+  options: SanitizeOptions = {}
+) {
   const sanitizedParts: string[] = [];
   const attrRegex =
     /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
@@ -42,7 +49,18 @@ function cleanTagAttributes(rawAttributes: string) {
     const rawName = match[1];
     const name = rawName.toLowerCase();
 
-    if (!name || name.startsWith('on')) continue;
+    if (!name) continue;
+
+    if (name.startsWith('on')) {
+      if (!options.allowEventHandlers) continue;
+
+      const rawEventValue = match[2] ?? match[3] ?? match[4] ?? '';
+      const eventValue = rawEventValue.trim();
+      if (!eventValue) continue;
+      sanitizedParts.push(`${rawName}="${escapeHtmlAttr(eventValue)}"`);
+      continue;
+    }
+
     if (!ALLOWED_ATTRS.has(name) && !name.startsWith('data-')) continue;
 
     const rawValue = match[2] ?? match[3] ?? match[4] ?? '';
@@ -79,7 +97,10 @@ function cleanTagAttributes(rawAttributes: string) {
   return sanitizedParts.length ? ` ${sanitizedParts.join(' ')}` : '';
 }
 
-function sanitizeAllowedMarkup(html: string) {
+function sanitizeAllowedMarkup(
+  html: string,
+  options: SanitizeOptions = {}
+) {
   const withoutUnsafeBlocks = removeUnsafeBlocks(html);
 
   return withoutUnsafeBlocks.replace(
@@ -92,7 +113,7 @@ function sanitizeAllowedMarkup(html: string) {
       if (isClosing) return `</${rawTagName}>`;
 
       const selfClosing = /\/\s*>$/.test(fullMatch);
-      const safeAttributes = cleanTagAttributes(rawAttributes || '');
+      const safeAttributes = cleanTagAttributes(rawAttributes || '', options);
       return `<${rawTagName}${safeAttributes}${selfClosing ? ' /' : ''}>`;
     }
   );
@@ -130,6 +151,8 @@ export type EmbeddedHtmlDocument = {
   headHtml: string;
   styles: string;
   scripts: EmbeddedHtmlScript[];
+  bodyAttributes: Record<string, string | true>;
+  title: string | null;
 };
 
 export type EmbeddedHtmlScript = {
@@ -152,20 +175,79 @@ export function prepareEmbeddedHtmlDocument(
       .join("\n")
   );
   const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyTagMatch = html.match(/<body\b([^>]*)>/i);
   const rawBody = bodyMatch ? bodyMatch[1] : html;
   const bodyWithoutHeadAssets = rawBody
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<link\b[^>]*>/gi, "");
-  const bodyHtml = sanitizeAllowedMarkup(bodyWithoutHeadAssets);
+  const bodyHtml = sanitizeAllowedMarkup(bodyWithoutHeadAssets, {
+    allowEventHandlers: true,
+  });
   const scripts = extractEmbeddedScripts(html);
+  const bodyAttributes = bodyTagMatch
+    ? parseHtmlAttributes(bodyTagMatch[1] || "")
+    : {};
+  const title = extractDocumentTitle(html);
 
   return {
     bodyHtml,
     headHtml,
     styles,
     scripts,
+    bodyAttributes,
+    title,
   };
+}
+
+function extractDocumentTitle(html: string) {
+  const titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  if (!titleMatch) return null;
+
+  const title = titleMatch[1]
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return title || null;
+}
+
+function parseHtmlAttributes(rawAttributes: string) {
+  const attributes: Record<string, string | true> = {};
+  const attrRegex =
+    /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+  for (const match of rawAttributes.matchAll(attrRegex)) {
+    const rawName = match[1];
+    const name = rawName.toLowerCase();
+
+    if (!name || name.startsWith("on")) continue;
+    if (
+      !ALLOWED_ATTRS.has(name) &&
+      !name.startsWith("data-") &&
+      name !== "role" &&
+      name !== "aria-hidden" &&
+      name !== "tabindex"
+    ) {
+      continue;
+    }
+
+    const rawValue = match[2] ?? match[3] ?? match[4] ?? "";
+    const normalizedValue = rawValue.trim();
+
+    if (
+      match[2] !== undefined ||
+      match[3] !== undefined ||
+      match[4] !== undefined
+    ) {
+      attributes[name] = normalizedValue;
+      continue;
+    }
+
+    attributes[name] = true;
+  }
+
+  return attributes;
 }
 
 function extractEmbeddedScripts(html: string): EmbeddedHtmlScript[] {

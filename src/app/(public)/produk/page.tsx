@@ -17,7 +17,7 @@ async function getProducts(categorySlug?: string, search?: string) {
     const supabase = await createServiceRoleClient();
     let query = supabase
       .from("products")
-      .select("*")
+      .select("*, click_target_page:pages!products_click_target_page_id_fkey(id,title,slug)")
       .eq("is_active", true)
       .order("is_featured", { ascending: false })
       .order("created_at", { ascending: false });

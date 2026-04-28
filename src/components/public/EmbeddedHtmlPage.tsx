@@ -18,9 +18,11 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
 
     host.setAttribute("data-embedded-html-scope", instanceId);
     host.innerHTML = document.bodyHtml;
+    applyHostAttributes(host, document.bodyAttributes);
     ensureLegacyScriptTargets(host);
 
     const cleanupHeadAssets = syncHeadAssets(document.headHtml);
+    const cleanupTitle = syncDocumentTitle(document.title);
     const cleanupStyles = syncStyleAssets(
       document.styles,
       instanceId,
@@ -38,14 +40,17 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
       cleanupFallbackInteractions();
       cleanupInternalAnchors();
       cleanupStyles();
+      cleanupTitle();
       cleanupHeadAssets();
       host.innerHTML = "";
     };
   }, [
     document.bodyHtml,
+    document.bodyAttributes,
     document.headHtml,
     document.scripts,
     document.styles,
+    document.title,
     instanceId,
     scopeSelector,
   ]);
@@ -57,6 +62,38 @@ export function EmbeddedHtmlPage({ document }: EmbeddedHtmlPageProps) {
       suppressHydrationWarning
     />
   );
+}
+
+function syncDocumentTitle(title: string | null) {
+  if (!title) {
+    return () => {};
+  }
+
+  const previousTitle = window.document.title;
+  window.document.title = title;
+
+  return () => {
+    window.document.title = previousTitle;
+  };
+}
+
+function applyHostAttributes(
+  host: HTMLElement,
+  attributes: Record<string, string | true>
+) {
+  host.className = "block w-full bg-white";
+  host.removeAttribute("style");
+
+  for (const [name, value] of Object.entries(attributes)) {
+    if (name === "id") continue;
+
+    if (value === true) {
+      host.setAttribute(name, "");
+      continue;
+    }
+
+    host.setAttribute(name, value);
+  }
 }
 
 function ensureLegacyScriptTargets(root: HTMLElement) {
@@ -430,15 +467,35 @@ function executeEmbeddedScripts(
   let cancelled = false;
 
   const run = async () => {
+    const inlineBuffer: string[] = [];
+
+    const flushInlineBuffer = () => {
+      if (inlineBuffer.length === 0) {
+        return;
+      }
+
+      cleanupTasks.push(executeDocumentScript(inlineBuffer.join("\n;\n"), root));
+      inlineBuffer.length = 0;
+    };
+
     for (const script of scripts) {
       if (cancelled) break;
 
       const source = await resolveScriptSource(script);
       if (!source) continue;
 
-      const cleanup = executeDocumentScript(source, root);
-      cleanupTasks.push(cleanup);
+      if (source.type === "inline") {
+        inlineBuffer.push(source.content);
+        continue;
+      }
+
+      flushInlineBuffer();
+      cleanupTasks.push(
+        await injectExternalScript(source.src, source.attributes)
+      );
     }
+
+    flushInlineBuffer();
   };
 
   void run();
@@ -451,20 +508,58 @@ function executeEmbeddedScripts(
 
 async function resolveScriptSource(script: EmbeddedHtmlScript) {
   if (script.content?.trim()) {
-    return script.content;
+    return {
+      type: "inline" as const,
+      content: script.content,
+    };
   }
 
   if (!script.src) {
     return null;
   }
 
-  try {
-    const response = await fetch(script.src);
-    if (!response.ok) return null;
-    return await response.text();
-  } catch {
-    return null;
+  return {
+    type: "external" as const,
+    src: script.src,
+    attributes: script.attributes,
+  };
+}
+
+async function injectExternalScript(
+  src: string,
+  attributes: Record<string, string | true>
+) {
+  const existing = window.document.head.querySelector<HTMLScriptElement>(
+    `script[src="${cssEscape(src)}"]`
+  );
+
+  if (existing) {
+    return () => {};
   }
+
+  const script = window.document.createElement("script");
+  script.src = src;
+
+  for (const [name, value] of Object.entries(attributes)) {
+    if (name === "src") continue;
+    if (value === true) {
+      script.setAttribute(name, "");
+      continue;
+    }
+    script.setAttribute(name, value);
+  }
+
+  script.setAttribute("data-embedded-html-script", "true");
+
+  await new Promise<void>((resolve) => {
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    window.document.head.appendChild(script);
+  });
+
+  return () => {
+    script.remove();
+  };
 }
 
 function executeDocumentScript(code: string, root: HTMLElement) {
@@ -544,6 +639,18 @@ function executeDocumentScript(code: string, root: HTMLElement) {
       window.removeEventListener(type, listener, options);
     },
   });
+  const globalNames = extractGlobalDeclarationNames(code);
+  const previousGlobals = new Map<
+    string,
+    { existed: boolean; value: unknown }
+  >();
+
+  globalNames.forEach((name) => {
+    previousGlobals.set(name, {
+      existed: Object.prototype.hasOwnProperty.call(window, name),
+      value: (window as unknown as Record<string, unknown>)[name],
+    });
+  });
 
   const runner = new Function(
     "window",
@@ -555,7 +662,7 @@ function executeDocumentScript(code: string, root: HTMLElement) {
     "clearInterval",
     "requestAnimationFrame",
     "cancelAnimationFrame",
-    code
+    `${code}\n;${buildGlobalExposureScript(globalNames)}`
   );
 
   runner(
@@ -575,10 +682,45 @@ function executeDocumentScript(code: string, root: HTMLElement) {
     timeoutIds.forEach((id) => window.clearTimeout(id));
     intervalIds.forEach((id) => window.clearInterval(id));
     animationFrameIds.forEach((id) => window.cancelAnimationFrame(id));
+    previousGlobals.forEach((previous, name) => {
+      if (previous.existed) {
+        (window as unknown as Record<string, unknown>)[name] = previous.value;
+        return;
+      }
+
+      delete (window as unknown as Record<string, unknown>)[name];
+    });
     timeoutIds.clear();
     intervalIds.clear();
     animationFrameIds.clear();
   };
+}
+
+function extractGlobalDeclarationNames(code: string) {
+  const names = new Set<string>();
+  const declarationRegex =
+    /(?:^|[\n;])\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(|(?:^|[\n;])\s*class\s+([A-Za-z_$][\w$]*)\b|(?:^|[\n;])\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/g;
+
+  for (const match of code.matchAll(declarationRegex)) {
+    const name = match[1] || match[2] || match[3];
+    if (!name) continue;
+    names.add(name);
+  }
+
+  return names;
+}
+
+function buildGlobalExposureScript(names: Set<string>) {
+  if (names.size === 0) {
+    return "";
+  }
+
+  return Array.from(names)
+    .map(
+      (name) =>
+        `try { window[${JSON.stringify(name)}] = ${name}; } catch (_) {}`
+    )
+    .join("\n");
 }
 
 function createWindowProxy(
@@ -639,7 +781,7 @@ function createDocumentProxy(
     location: actualDocument.location,
     referrer: actualDocument.referrer,
     title: actualDocument.title,
-    body: actualDocument.body,
+    body: root,
     head: actualDocument.head,
     documentElement: actualDocument.documentElement,
     querySelector: (selector: string) =>
@@ -658,7 +800,7 @@ function createDocumentProxy(
       root.getElementsByClassName(className),
     getElementsByTagName: (tagName: string) => {
       if (tagName.toLowerCase() === "body") {
-        return actualDocument.getElementsByTagName(tagName);
+        return [root] as unknown as HTMLCollectionOf<Element>;
       }
 
       return root.getElementsByTagName(tagName);

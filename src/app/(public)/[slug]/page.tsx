@@ -113,13 +113,14 @@ export default async function DynamicPage({
   const hasStandaloneHtml = page.content_html
     ? isStandaloneHtml(page.content_html)
     : false;
+  const hidePublicChrome = page.hide_header_footer || hasStandaloneHtml;
 
   if (contentHtml && hasStandaloneHtml) {
     const embeddedPage = prepareEmbeddedHtmlDocument(contentHtml);
 
     return (
-      <div className="min-h-screen bg-white" data-hide-public-chrome={page.hide_header_footer ? "true" : undefined}>
-        {page.hide_header_footer && <HidePublicChromeStyle />}
+      <div className="min-h-screen bg-white" data-hide-public-chrome={hidePublicChrome ? "true" : undefined}>
+        {hidePublicChrome && <HidePublicChromeStyle />}
         {page.product && <AffiliateReferralTracker productSlug={page.product.slug} />}
         <ExternalHeadLinks html={contentHtml} />
         <EmbeddedHtmlPage document={embeddedPage} />
@@ -128,8 +129,8 @@ export default async function DynamicPage({
   }
 
   return (
-    <div className="min-h-screen py-12 sm:py-20" data-hide-public-chrome={page.hide_header_footer ? "true" : undefined}>
-      {page.hide_header_footer && <HidePublicChromeStyle />}
+    <div className="min-h-screen py-12 sm:py-20" data-hide-public-chrome={hidePublicChrome ? "true" : undefined}>
+      {hidePublicChrome && <HidePublicChromeStyle />}
       {page.product && <AffiliateReferralTracker productSlug={page.product.slug} />}
       {contentHtml && <ExternalHeadLinks html={contentHtml} />}
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">

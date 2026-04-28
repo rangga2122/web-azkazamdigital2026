@@ -20,7 +20,7 @@ async function getHomeData() {
     const [productsRes, testimonialsRes, faqsRes, settingsRes] = await Promise.all([
       supabase
         .from("products")
-        .select("*")
+        .select("*, click_target_page:pages!products_click_target_page_id_fkey(id,title,slug)")
         .eq("is_active", true)
         .order("is_featured", { ascending: false })
         .order("created_at", { ascending: false }),
@@ -154,68 +154,13 @@ export default async function HomePage() {
 
             <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3 xl:gap-8">
               {products.map((product) => (
-                <article
+                <HomeProductCard
                   key={product.id}
-                  className="group relative overflow-hidden rounded-xl bg-white shadow-[0_10px_22px_rgba(0,0,0,0.07)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_18px_45px_rgba(0,0,0,0.12)]"
-                >
-                  {(product.badge || product.is_featured) && (
-                    <span className="absolute left-3 top-3 z-10 rounded bg-[#ff6b6b] px-3 py-1 text-xs font-bold text-white shadow-lg">
-                      {product.badge || texts.product_default_badge}
-                    </span>
-                  )}
-
-                  <Link href={`/produk/${product.slug}`} className="block">
-                    <div className="h-36 overflow-hidden bg-[#eef7ff] sm:h-52">
-                      {product.thumbnail_url ? (
-                        <img
-                          src={product.thumbnail_url}
-                          alt={product.title}
-                          className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#e9f8ff,#ffffff)]">
-                          <span className="text-4xl font-bold text-[#0066cc]/35">
-                            {product.title.charAt(0)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </Link>
-
-                  <div className="p-4 sm:p-6">
-                    <h3 className="line-clamp-2 min-h-[2.7rem] text-sm font-bold leading-snug text-[#1a1a2e] transition group-hover:text-[#0066cc] sm:text-lg">
-                      {product.title}
-                    </h3>
-
-                    <div className="mt-3 flex items-center gap-1 text-[#ffc107]">
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <FaStar key={index} size={13} />
-                      ))}
-                      <span className="ml-1 hidden text-xs text-[#6c757d] sm:inline">
-                        {texts.product_rating_label}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 flex flex-col items-start">
-                      {product.compare_at_price &&
-                        product.compare_at_price > product.price && (
-                          <span className="text-xs text-[#6c757d] line-through sm:text-sm">
-                            {formatPrice(product.compare_at_price)}
-                          </span>
-                        )}
-                      <span className="text-lg font-bold text-[#0066cc] sm:text-2xl">
-                        {formatPrice(product.price)}
-                      </span>
-                    </div>
-
-                    <Link
-                      href={`/produk/${product.slug}`}
-                      className="mt-5 block rounded-full bg-[#0066cc] px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-900/10 transition hover:scale-[1.03] hover:bg-red-500 sm:text-sm"
-                    >
-                      {texts.product_card_button}
-                    </Link>
-                  </div>
-                </article>
+                  product={product}
+                  buttonLabel={texts.product_card_button}
+                  badgeFallback={texts.product_default_badge}
+                  ratingLabel={texts.product_rating_label}
+                />
               ))}
             </div>
 
@@ -347,4 +292,95 @@ export default async function HomePage() {
       </section>
     </main>
   );
+}
+
+function HomeProductCard({
+  product,
+  buttonLabel,
+  badgeFallback,
+  ratingLabel,
+}: {
+  product: Product;
+  buttonLabel: string;
+  badgeFallback: string;
+  ratingLabel: string;
+}) {
+  const productHref = resolveProductTargetHref(product);
+
+  return (
+    <article className="group relative overflow-hidden rounded-xl bg-white shadow-[0_10px_22px_rgba(0,0,0,0.07)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
+      {(product.badge || product.is_featured) && (
+        <span className="absolute left-3 top-3 z-10 rounded bg-[#ff6b6b] px-3 py-1 text-xs font-bold text-white shadow-lg">
+          {product.badge || badgeFallback}
+        </span>
+      )}
+
+      <Link href={productHref} className="block">
+        <div className="h-36 overflow-hidden bg-[#eef7ff] sm:h-52">
+          {product.thumbnail_url ? (
+            <img
+              src={product.thumbnail_url}
+              alt={product.title}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#e9f8ff,#ffffff)]">
+              <span className="text-4xl font-bold text-[#0066cc]/35">
+                {product.title.charAt(0)}
+              </span>
+            </div>
+          )}
+        </div>
+      </Link>
+
+      <div className="p-4 sm:p-6">
+        <h3 className="line-clamp-2 min-h-[2.7rem] text-sm font-bold leading-snug text-[#1a1a2e] transition group-hover:text-[#0066cc] sm:text-lg">
+          {product.title}
+        </h3>
+
+        <div className="mt-3 flex items-center gap-1 text-[#ffc107]">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <FaStar key={index} size={13} />
+          ))}
+          <span className="ml-1 hidden text-xs text-[#6c757d] sm:inline">
+            {ratingLabel}
+          </span>
+        </div>
+
+        <div className="mt-4 flex flex-col items-start">
+          {product.compare_at_price &&
+            product.compare_at_price > product.price && (
+              <span className="text-xs text-[#6c757d] line-through sm:text-sm">
+                {formatPrice(product.compare_at_price)}
+              </span>
+            )}
+          <span className="text-lg font-bold text-[#0066cc] sm:text-2xl">
+            {formatPrice(product.price)}
+          </span>
+        </div>
+
+        <Link
+          href={productHref}
+          className="mt-5 block rounded-full bg-[#0066cc] px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-900/10 transition hover:scale-[1.03] hover:bg-red-500 sm:text-sm"
+        >
+          {buttonLabel}
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function resolveProductTargetHref(product: Product) {
+  if (
+    product.click_target_type === "cms_page" &&
+    product.click_target_page?.slug
+  ) {
+    return `/${product.click_target_page.slug}`;
+  }
+
+  if (product.click_target_type === "checkout") {
+    return `/order/${product.slug}`;
+  }
+
+  return `/produk/${product.slug}`;
 }
