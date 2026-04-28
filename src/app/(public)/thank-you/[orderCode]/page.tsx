@@ -97,6 +97,82 @@ export default async function ThankYouPage({
                 </div>
               </div>
 
+              <div className="mb-6 rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="mb-3 text-center text-sm font-extrabold uppercase tracking-wide text-slate-700">
+                  {settings.site_name}
+                </div>
+                <div className="mb-3 text-center text-xl font-extrabold text-slate-950">
+                  Bayar dengan QRIS
+                </div>
+                <div className="mx-auto mb-4 max-w-[210px] rounded-[8px] bg-white p-2 shadow-sm">
+                  <img
+                    src={qrisImageUrl}
+                    alt="QRIS pembayaran"
+                    className="h-auto w-full rounded-[6px]"
+                    loading="eager"
+                    decoding="sync"
+                    fetchPriority="high"
+                  />
+                </div>
+                {order ? (
+                  <PaymentExpiryCountdown
+                    createdAt={order.created_at}
+                    status={order.status}
+                    expiryMinutes={10}
+                  />
+                ) : null}
+                <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-left text-xs leading-relaxed text-amber-800">
+                  <strong>Perhatian:</strong>
+                  <br />
+                  Pastikan anda hanya melakukan scan qris hanya lewat web resmi azkazamdigital.
+                </div>
+              </div>
+
+              <div className="mb-6 rounded-[8px] border border-slate-200 bg-white px-4 py-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+                <div className="mb-1 text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
+                  Alternatif Transfer
+                </div>
+                <div className="mb-4 text-base font-extrabold text-slate-950">
+                  Rekening Bank
+                </div>
+                <div className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Bank
+                      </div>
+                      <div className="text-base font-extrabold text-blue-700">
+                        {settings.payment_bank_name}
+                      </div>
+                    </div>
+                    <div className="rounded-full bg-blue-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">
+                      Manual
+                    </div>
+                  </div>
+                  <div className="border-t border-slate-200 pt-3">
+                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Nomor Rekening
+                    </div>
+                    <div className="flex items-center justify-between gap-2 rounded-[8px] bg-white px-3 py-3 shadow-sm">
+                      <div className="text-lg font-extrabold tracking-wide text-slate-950">
+                        {settings.payment_account_number}
+                      </div>
+                      <CopyAccountButton
+                        accountNumber={settings.payment_account_number}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3 border-t border-slate-200 pt-3">
+                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Atas Nama
+                    </div>
+                    <div className="text-sm font-semibold text-slate-700">
+                      {settings.payment_account_name}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {subtotal > 0 && (
                 <div className="mb-6 rounded-[8px] border border-blue-500 bg-white px-4 py-4 text-sm">
                   <div className="mb-4 text-left text-sm font-bold uppercase tracking-wide text-slate-500">
@@ -136,59 +212,6 @@ export default async function ThankYouPage({
               Kode pesanan: <span className="font-mono font-semibold">{orderCode}</span>
             </div>
           )}
-
-          <h2 className="mb-5 text-2xl font-extrabold text-slate-950">
-            Transfer ke Rekening:
-          </h2>
-
-          <div className="mb-6 rounded-[8px] border border-slate-200 bg-white px-4 py-5">
-            <div className="mb-2 text-sm font-extrabold text-blue-700">
-              {settings.payment_bank_name}
-            </div>
-            <div className="flex items-center justify-center gap-2">
-              <div className="text-xl font-extrabold tracking-wide text-red-500">
-                {settings.payment_account_number}
-              </div>
-              <CopyAccountButton
-                accountNumber={settings.payment_account_number}
-              />
-            </div>
-            <div className="mt-2 text-xs font-medium text-slate-500">
-              {settings.payment_account_name}
-            </div>
-          </div>
-
-          <h2 className="mb-5 text-2xl font-extrabold text-slate-950">
-            Atau Bayar dengan QRIS:
-          </h2>
-
-          <div className="mb-6 rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4">
-            <div className="mb-3 text-center text-sm font-extrabold uppercase tracking-wide text-slate-700">
-              {settings.site_name}
-            </div>
-            <div className="mx-auto mb-4 max-w-[210px] rounded-[8px] bg-white p-2 shadow-sm">
-              <img
-                src={qrisImageUrl}
-                alt="QRIS pembayaran"
-                className="h-auto w-full rounded-[6px]"
-                loading="eager"
-                decoding="sync"
-                fetchPriority="high"
-              />
-            </div>
-            {order ? (
-              <PaymentExpiryCountdown
-                createdAt={order.created_at}
-                status={order.status}
-                expiryMinutes={10}
-              />
-            ) : null}
-            <div className="rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-left text-xs leading-relaxed text-amber-800">
-              <strong>Perhatian:</strong>
-              <br />
-              Pastikan anda hanya melakukan scan qris hanya lewat web resmi azkazamdigital.
-            </div>
-          </div>
 
           <a
             href={whatsappUrl}
