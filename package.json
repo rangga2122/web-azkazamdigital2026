@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "archive:unused-media": "node scripts/archive-unused-media.js",
+    "cleanup:legacy-page-assets": "node scripts/cleanup-legacy-page-assets.js",
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",

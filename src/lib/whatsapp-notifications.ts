@@ -1,3 +1,4 @@
+import { sanitizePublicMediaUrl } from "@/lib/legacy-media";
 import type { Product } from "@/types";
 
 export type WhatsappStatus = "pending" | "paid" | "failed" | "cancelled";
@@ -648,7 +649,7 @@ export function resolveBroadcastMediaUrl(value: string, origin: string) {
 export function productImageFromProduct(
   product: Pick<Product, "thumbnail_url"> | null | undefined
 ) {
-  return product?.thumbnail_url || null;
+  return sanitizePublicMediaUrl(product?.thumbnail_url);
 }
 
 function buildOrderTemplateTokens(context: WhatsappOrderContext) {
@@ -682,7 +683,9 @@ function pickNotificationImage(
   defaultImageUrl: string,
   origin: string
 ) {
-  const source = productImageUrl || defaultImageUrl;
+  const source =
+    sanitizePublicMediaUrl(productImageUrl) ||
+    sanitizePublicMediaUrl(defaultImageUrl);
   if (!source) return null;
   if (/^https?:\/\//i.test(source)) return source;
 

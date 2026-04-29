@@ -1,3 +1,5 @@
+import { stripLegacyUploadAssetUrlsFromHtml } from "@/lib/legacy-media";
+
 const ALLOWED_HTML_TAGS = new Set([
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'p', 'br', 'hr',
@@ -131,7 +133,7 @@ function escapeHtmlAttr(value: string) {
  * Sanitize HTML to prevent XSS while allowing safe HTML rendering
  */
 export function sanitizeHtml(html: string): string {
-  return sanitizeAllowedMarkup(html);
+  return sanitizeAllowedMarkup(stripLegacyUploadAssetUrlsFromHtml(html));
 }
 
 export function isStandaloneHtml(html: string): boolean {
@@ -139,7 +141,9 @@ export function isStandaloneHtml(html: string): boolean {
 }
 
 export function sanitizeHtmlDocument(html: string): string {
-  const sanitized = sanitizeAllowedMarkup(html);
+  const sanitized = sanitizeAllowedMarkup(
+    stripLegacyUploadAssetUrlsFromHtml(html)
+  );
 
   if (/<html[\s>]/i.test(sanitized)) return sanitized;
 
@@ -170,19 +174,22 @@ export type EmbeddedHeadLink = {
 export function prepareEmbeddedHtmlDocument(
   html: string
 ): EmbeddedHtmlDocument {
-  const styles = Array.from(html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi))
+  const cleanedHtml = stripLegacyUploadAssetUrlsFromHtml(html);
+  const styles = Array.from(
+    cleanedHtml.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)
+  )
     .map((match) => match[1])
     .join("\n");
   const headHtml = sanitizeAllowedMarkup(
-    Array.from(html.matchAll(/<link\b[^>]*>/gi))
+    Array.from(cleanedHtml.matchAll(/<link\b[^>]*>/gi))
       .map((match) => match[0])
       .filter((tag) => /rel=["']?(stylesheet|preconnect|preload)/i.test(tag))
       .map((tag) => tag.replace(/\smedia=["']print["']/i, ' media="all"'))
       .join("\n")
   );
-  const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
-  const bodyTagMatch = html.match(/<body\b([^>]*)>/i);
-  const rawBody = bodyMatch ? bodyMatch[1] : html;
+  const bodyMatch = cleanedHtml.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyTagMatch = cleanedHtml.match(/<body\b([^>]*)>/i);
+  const rawBody = bodyMatch ? bodyMatch[1] : cleanedHtml;
   const bodyWithoutHeadAssets = rawBody
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
@@ -192,11 +199,11 @@ export function prepareEmbeddedHtmlDocument(
       allowEventHandlers: true,
     })
   );
-  const scripts = extractEmbeddedScripts(html);
+  const scripts = extractEmbeddedScripts(cleanedHtml);
   const bodyAttributes = bodyTagMatch
     ? parseHtmlAttributes(bodyTagMatch[1] || "")
     : {};
-  const title = extractDocumentTitle(html);
+  const title = extractDocumentTitle(cleanedHtml);
 
   return {
     bodyHtml,

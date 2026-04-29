@@ -1,6 +1,6 @@
 # AzkazamDigital - Platform Produk Digital Premium
 
-Platform fullstack untuk penjualan produk digital dengan sistem afiliasi lengkap, CMS pages, form order, Facebook Pixel tracking, dan admin panel modern. Pengganti WordPress yang lebih cepat dan modern.
+Platform fullstack untuk penjualan produk digital dengan sistem afiliasi lengkap, CMS pages, form order, Facebook Pixel tracking, dan admin panel modern.
 
 ## 🛠 Tech Stack
 
@@ -259,7 +259,7 @@ src/
 ## ⚡ Fitur Utama
 
 - ✅ Homepage modern dengan hero, produk unggulan, testimoni, FAQ
-- ✅ CMS Pages dinamis berbasis slug (seperti WordPress)
+- ✅ CMS Pages dinamis berbasis slug
 - ✅ Import/render HTML custom (seperti WP Coder)
 - ✅ CRUD Products + Categories
 - ✅ Form Order dengan validasi
@@ -281,8 +281,6 @@ src/
 
 ## 🚫 Yang Tidak Digunakan
 
-- ❌ WordPress
 - ❌ Firebase
 - ❌ Prisma
 - ❌ CMS pihak ketiga
-- ❌ Plugin WordPress

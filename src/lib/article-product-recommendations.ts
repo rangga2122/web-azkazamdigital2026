@@ -1,3 +1,4 @@
+import { sanitizePublicMediaUrl } from "@/lib/legacy-media";
 import type { Product } from "@/types";
 
 export type ProductRecommendationStyle = "spotlight" | "compact" | "banner";
@@ -390,8 +391,9 @@ function buildBannerRecommendationHtml(
   contactLabel: string,
   contactUrl: string
 ) {
-  const imageHtml = product.thumbnail_url
-    ? `<img src="${escapeHtmlAttr(product.thumbnail_url)}" alt="${escapeHtmlAttr(
+  const thumbnailUrl = sanitizePublicMediaUrl(product.thumbnail_url);
+  const imageHtml = thumbnailUrl
+    ? `<img src="${escapeHtmlAttr(thumbnailUrl)}" alt="${escapeHtmlAttr(
         product.title
       )}" class="h-full w-full object-cover" loading="lazy" />`
     : "";
@@ -452,8 +454,10 @@ function buildRecommendationImage(
   imageClassName: string,
   minHeight: number
 ) {
-  return product.thumbnail_url
-    ? `<img src="${escapeHtmlAttr(product.thumbnail_url)}" alt="${escapeHtmlAttr(
+  const thumbnailUrl = sanitizePublicMediaUrl(product.thumbnail_url);
+
+  return thumbnailUrl
+    ? `<img src="${escapeHtmlAttr(thumbnailUrl)}" alt="${escapeHtmlAttr(
         product.title
       )}" class="${escapeHtmlAttr(imageClassName)}" loading="lazy" />`
     : `<div class="flex items-center justify-center bg-slate-100 text-4xl font-bold text-slate-400" style="min-height:${minHeight}px">${escapeHtml(

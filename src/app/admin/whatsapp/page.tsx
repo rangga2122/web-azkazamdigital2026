@@ -683,7 +683,7 @@ export default function AdminWhatsappPage() {
                 <h2 className="font-semibold text-white">Broadcast Pelanggan Massal</h2>
                 <p className="mt-1 text-sm text-dark-400">
                   Mengambil pelanggan unik dari riwayat order sesuai filter, lalu
-                  mengirim pesan satu per satu dengan delay acak seperti plugin WordPress.
+                  mengirim pesan satu per satu dengan delay acak seperti sistem broadcast legacy.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

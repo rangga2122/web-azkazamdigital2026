@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { sanitizePublicMediaUrl } from "@/lib/legacy-media";
 import { formatPrice } from "@/lib/utils";
 import {
   trackPageView,
@@ -41,6 +42,7 @@ export function OrderFormClient({
     coupon_code: "",
   });
   const referralCodeFromQuery = searchParams.get("ref")?.trim().toUpperCase() || null;
+  const thumbnailUrl = sanitizePublicMediaUrl(product.thumbnail_url);
   const previewDiscount = appliedCoupon?.discount_amount || 0;
   const previewBaseTotal = Math.max(product.price - previewDiscount, 0);
   const previewTotal = previewBaseTotal + previewUniqueCode;
@@ -198,9 +200,9 @@ export function OrderFormClient({
     <div className="overflow-hidden rounded-[8px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
       <div className="border-b border-slate-200 bg-slate-50 px-6 py-6">
         <div className="flex items-center gap-4">
-          {product.thumbnail_url ? (
+          {thumbnailUrl ? (
             <img
-              src={product.thumbnail_url}
+              src={thumbnailUrl}
               alt={product.title}
               className="h-16 w-16 rounded-[8px] object-cover"
               decoding="async"

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { sanitizePublicMediaUrl } from "@/lib/legacy-media";
 import { unstable_cache } from "next/cache";
 import {
   FaArrowRight,
@@ -317,6 +318,7 @@ function HomeProductCard({
   ratingLabel: string;
 }) {
   const productHref = resolveProductTargetHref(product);
+  const thumbnailUrl = sanitizePublicMediaUrl(product.thumbnail_url);
 
   return (
     <article className="group relative overflow-hidden rounded-xl bg-white shadow-[0_10px_22px_rgba(0,0,0,0.07)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
@@ -328,9 +330,9 @@ function HomeProductCard({
 
       <Link href={productHref} className="block">
         <div className="h-36 overflow-hidden bg-[#eef7ff] sm:h-52">
-          {product.thumbnail_url ? (
+          {thumbnailUrl ? (
             <img
-              src={product.thumbnail_url}
+              src={thumbnailUrl}
               alt={product.title}
               className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
               loading="lazy"

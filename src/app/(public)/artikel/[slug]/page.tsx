@@ -7,6 +7,7 @@ import {
   replaceProductRecommendationShortcodes,
   type ProductRecommendationSource,
 } from "@/lib/article-product-recommendations";
+import { sanitizePublicMediaUrl } from "@/lib/legacy-media";
 import { absoluteUrl } from "@/lib/site-url";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { formatDate, sanitizeHtml } from "@/lib/utils";
@@ -53,7 +54,7 @@ export async function generateMetadata({
   }
 
   const canonical = article.canonical_url || `/artikel/${article.slug}`;
-  const image = article.cover_image || "/icon.png";
+  const image = sanitizePublicMediaUrl(article.cover_image) || "/icon.png";
 
   return {
     title: article.seo_title || article.title,
@@ -95,7 +96,9 @@ export default async function ArticleDetailPage({
 
   const renderedArticleContent = await renderArticleContent(article.content_html);
   const canonical = absoluteUrl(article.canonical_url || `/artikel/${article.slug}`);
-  const image = absoluteUrl(article.cover_image || "/icon.png");
+  const image = absoluteUrl(
+    sanitizePublicMediaUrl(article.cover_image) || "/icon.png"
+  );
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Article",
@@ -156,9 +159,9 @@ export default async function ArticleDetailPage({
         </div>
 
         <article className="overflow-hidden rounded-[2rem] border border-dark-800 bg-dark-900/95">
-          {article.cover_image ? (
+          {sanitizePublicMediaUrl(article.cover_image) ? (
             <img
-              src={article.cover_image}
+              src={sanitizePublicMediaUrl(article.cover_image) || "/icon.png"}
               alt={article.title}
               className="h-auto max-h-[420px] w-full object-cover"
             />

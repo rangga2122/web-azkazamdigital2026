@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { sanitizePublicMediaUrl } from "@/lib/legacy-media";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/types";
 
@@ -8,6 +9,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const productTargetHref = resolveProductTargetHref(product);
+  const thumbnailUrl = sanitizePublicMediaUrl(product.thumbnail_url);
   const discount = product.compare_at_price
     ? Math.round(
         ((product.compare_at_price - product.price) / product.compare_at_price) *
@@ -28,9 +30,9 @@ export function ProductCard({ product }: ProductCardProps) {
 
       {/* Thumbnail */}
       <div className="relative aspect-video bg-dark-800 overflow-hidden">
-        {product.thumbnail_url ? (
+        {thumbnailUrl ? (
           <img
-            src={product.thumbnail_url}
+            src={thumbnailUrl}
             alt={product.title}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
             loading="lazy"
