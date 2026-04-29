@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
 import { triggerAdminRevalidation } from "@/lib/admin-revalidate";
+import {
+  compareAdminDates,
+  compareAdminNumbers,
+  compareAdminStrings,
+  matchesAdminSearch,
+} from "@/lib/admin-collections";
 import { copyTextToClipboard } from "@/lib/client-clipboard";
 import { createClient } from "@/lib/supabase/client";
 import { formatPrice, getProductCommissionLabel } from "@/lib/utils";
@@ -24,6 +31,9 @@ export default function AdminProductsPage() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
   const [form, setForm] = useState({
     title: "", slug: "", short_description: "", description_html: "",
@@ -202,6 +212,36 @@ export default function AdminProductsPage() {
 
     window.open(path, "_blank", "noopener,noreferrer");
   }
+
+  const filteredProducts = products
+    .filter((product) => {
+      if (statusFilter === "active" && !product.is_active) return false;
+      if (statusFilter === "inactive" && product.is_active) return false;
+      if (statusFilter === "featured" && !product.is_featured) return false;
+      return matchesAdminSearch(
+        searchQuery,
+        product.title,
+        product.slug,
+        product.short_description,
+        product.badge,
+        product.click_target_page?.title
+      );
+    })
+    .sort((left, right) => {
+      switch (sortBy) {
+        case "oldest":
+          return compareAdminDates(left.created_at, right.created_at, "asc");
+        case "title":
+          return compareAdminStrings(left.title, right.title);
+        case "price-high":
+          return compareAdminNumbers(left.price, right.price, "desc");
+        case "price-low":
+          return compareAdminNumbers(left.price, right.price, "asc");
+        case "newest":
+        default:
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+      }
+    });
 
   if (editing || creating) {
     return (
@@ -448,7 +488,38 @@ export default function AdminProductsPage() {
         <h1 className="text-2xl font-bold text-white">Produk</h1>
         <button onClick={startCreate} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700"><FaPlus size={12} /> Tambah Produk</button>
       </div>
-      {loading ? <div className="text-dark-400">Memuat...</div> : products.length === 0 ? <div className="text-center py-16 text-dark-500">Belum ada produk.</div> : (
+      <AdminCollectionToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Cari nama, slug, badge, deskripsi singkat, atau landing produk..."
+        selects={[
+          {
+            label: "Status",
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: [
+              { label: "Semua produk", value: "all" },
+              { label: "Aktif", value: "active" },
+              { label: "Nonaktif", value: "inactive" },
+              { label: "Unggulan", value: "featured" },
+            ],
+          },
+          {
+            label: "Urutkan",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "Produk terbaru", value: "newest" },
+              { label: "Produk terlama", value: "oldest" },
+              { label: "Nama A-Z", value: "title" },
+              { label: "Harga tertinggi", value: "price-high" },
+              { label: "Harga terendah", value: "price-low" },
+            ],
+          },
+        ]}
+        summary={`${filteredProducts.length} dari ${products.length} produk`}
+      />
+      {loading ? <div className="text-dark-400">Memuat...</div> : filteredProducts.length === 0 ? <div className="text-center py-16 text-dark-500">Tidak ada produk yang cocok.</div> : (
         <div className="rounded-2xl bg-dark-900 border border-dark-800 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -463,7 +534,7 @@ export default function AdminProductsPage() {
                 <th className="text-right text-dark-400 py-3 px-4">Aksi</th>
               </tr></thead>
               <tbody>
-                {products.map((p) => (
+                {filteredProducts.map((p) => (
                   <tr key={p.id} className="border-b border-dark-800 hover:bg-dark-800/50">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">

@@ -1,6 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
 import { copyTextToClipboard } from "@/lib/client-clipboard";
+import {
+  compareAdminDates,
+  compareAdminNumbers,
+  compareAdminStrings,
+  matchesAdminSearch,
+} from "@/lib/admin-collections";
 import { FaExternalLinkAlt, FaUpload, FaCopy, FaImage, FaTrash } from "react-icons/fa";
 import toast from "react-hot-toast";
 
@@ -18,6 +25,8 @@ export default function AdminMediaPage() {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [category, setCategory] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
@@ -136,6 +145,31 @@ export default function AdminMediaPage() {
     return value ? labels[value] || value : "";
   }
 
+  const filteredMediaFiles = mediaFiles
+    .filter((file) =>
+      matchesAdminSearch(
+        searchQuery,
+        file.original_name,
+        file.file_path,
+        file.category
+      )
+    )
+    .sort((left, right) => {
+      switch (sortBy) {
+        case "name":
+          return compareAdminStrings(left.original_name, right.original_name);
+        case "size-large":
+          return compareAdminNumbers(left.file_size, right.file_size, "desc");
+        case "size-small":
+          return compareAdminNumbers(left.file_size, right.file_size, "asc");
+        case "oldest":
+          return compareAdminDates(left.updated_at, right.updated_at, "asc");
+        case "newest":
+        default:
+          return compareAdminDates(left.updated_at, right.updated_at, "desc");
+      }
+    });
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -170,17 +204,37 @@ export default function AdminMediaPage() {
         </div>
         <p className="text-dark-500 text-xs">Format: JPEG, PNG, GIF, WebP, SVG. Maksimal 5MB per file.</p>
       </div>
+      <AdminCollectionToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Cari nama file, path media, atau kategori..."
+        selects={[
+          {
+            label: "Urutkan",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "File terbaru", value: "newest" },
+              { label: "File terlama", value: "oldest" },
+              { label: "Nama A-Z", value: "name" },
+              { label: "Ukuran terbesar", value: "size-large" },
+              { label: "Ukuran terkecil", value: "size-small" },
+            ],
+          },
+        ]}
+        summary={`${filteredMediaFiles.length} dari ${mediaFiles.length} file`}
+      />
 
       {loading ? (
         <div className="text-dark-400">Memuat media...</div>
-      ) : mediaFiles.length > 0 ? (
+      ) : filteredMediaFiles.length > 0 ? (
         <div className="rounded-2xl bg-dark-900 border border-dark-800 p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-white font-semibold">Galeri Media</h3>
-            <span className="text-xs text-dark-500">{mediaFiles.length} file</span>
+            <span className="text-xs text-dark-500">{filteredMediaFiles.length} file</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-4">
-            {mediaFiles.map((file) => (
+            {filteredMediaFiles.map((file) => (
               <div key={file.file_path} className="rounded-xl bg-dark-800 border border-dark-700 overflow-hidden">
                 <div className="h-28 bg-dark-900 flex items-center justify-center overflow-hidden">
                   <img

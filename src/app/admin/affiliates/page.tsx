@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
+import {
+  compareAdminDates,
+  compareAdminStrings,
+  matchesAdminSearch,
+} from "@/lib/admin-collections";
 import { createClient } from "@/lib/supabase/client";
 import { getStatusColor, getStatusLabel } from "@/lib/utils";
 import { FaTrash } from "react-icons/fa";
@@ -10,6 +16,9 @@ import type { Affiliate } from "@/types";
 export default function AdminAffiliatesPage() {
   const [items, setItems] = useState<Affiliate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
 
   async function load() {
     const supabase = createClient();
@@ -60,14 +69,70 @@ export default function AdminAffiliatesPage() {
     load();
   }
 
+  const filteredItems = items
+    .filter((affiliate) => {
+      if (statusFilter !== "all" && affiliate.status !== statusFilter) return false;
+      return matchesAdminSearch(
+        searchQuery,
+        affiliate.full_name,
+        affiliate.email,
+        affiliate.referral_code,
+        affiliate.whatsapp,
+        affiliate.payout_method,
+        affiliate.payout_account_number,
+        affiliate.payout_account
+      );
+    })
+    .sort((left, right) => {
+      switch (sortBy) {
+        case "oldest":
+          return compareAdminDates(left.created_at, right.created_at, "asc");
+        case "name":
+          return compareAdminStrings(left.full_name, right.full_name);
+        case "newest":
+        default:
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+      }
+    });
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-white mb-6">Afiliasi</h1>
+      <AdminCollectionToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Cari nama, email, referral, WhatsApp, atau rekening afiliasi..."
+        selects={[
+          {
+            label: "Status",
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: [
+              { label: "Semua status", value: "all" },
+              { label: "Menunggu", value: "pending" },
+              { label: "Disetujui", value: "approved" },
+              { label: "Ditolak", value: "rejected" },
+              { label: "Ditangguhkan", value: "suspended" },
+            ],
+          },
+          {
+            label: "Urutkan",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "Pendaftaran terbaru", value: "newest" },
+              { label: "Pendaftaran terlama", value: "oldest" },
+              { label: "Nama A-Z", value: "name" },
+            ],
+          },
+        ]}
+        summary={`${filteredItems.length} dari ${items.length} afiliasi`}
+      />
       {loading ? (
         <div className="text-dark-400">Memuat...</div>
-      ) : items.length === 0 ? (
+      ) : filteredItems.length === 0 ? (
         <div className="text-center py-16 text-dark-500">
-          Belum ada afiliasi.
+          Tidak ada afiliasi yang cocok.
         </div>
       ) : (
         <div className="rounded-2xl bg-dark-900 border border-dark-800 overflow-hidden">
@@ -90,7 +155,7 @@ export default function AdminAffiliatesPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((aff) => (
+                {filteredItems.map((aff) => (
                   <tr
                     key={aff.id}
                     className="border-b border-dark-800 hover:bg-dark-800/50"

@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
 import { triggerAdminRevalidation } from "@/lib/admin-revalidate";
+import {
+  compareAdminDates,
+  compareAdminNumbers,
+  compareAdminStrings,
+  matchesAdminSearch,
+} from "@/lib/admin-collections";
 import { copyTextToClipboard } from "@/lib/client-clipboard";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
@@ -16,6 +23,9 @@ export default function AdminPagesPage() {
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generatingSeo, setGeneratingSeo] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("manual");
   const [form, setForm] = useState({
     title: "", slug: "", content_html: "", featured_image: "",
     seo_title: "", seo_description: "", status: "draft", sort_order: 0,
@@ -192,6 +202,33 @@ export default function AdminPagesPage() {
     }
   }
 
+  const filteredPages = pages
+    .filter((page) => {
+      if (statusFilter !== "all" && page.status !== statusFilter) return false;
+      return matchesAdminSearch(
+        searchQuery,
+        page.title,
+        page.slug,
+        page.status,
+        page.product?.title
+      );
+    })
+    .sort((left, right) => {
+      switch (sortBy) {
+        case "newest-created":
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+        case "oldest-created":
+          return compareAdminDates(left.created_at, right.created_at, "asc");
+        case "updated":
+          return compareAdminDates(left.updated_at, right.updated_at, "desc");
+        case "alpha":
+          return compareAdminStrings(left.title, right.title);
+        case "manual":
+        default:
+          return compareAdminNumbers(left.sort_order, right.sort_order, "asc");
+      }
+    });
+
   if (editing || creating) {
     return (
       <div>
@@ -342,11 +379,41 @@ export default function AdminPagesPage() {
           <FaPlus size={12} /> Tambah Halaman
         </button>
       </div>
+      <AdminCollectionToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Cari judul, slug, produk terkait, atau status halaman..."
+        selects={[
+          {
+            label: "Status",
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: [
+              { label: "Semua status", value: "all" },
+              { label: "Draf", value: "draft" },
+              { label: "Diterbitkan", value: "published" },
+            ],
+          },
+          {
+            label: "Urutkan",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "Urutan manual", value: "manual" },
+              { label: "Pembuatan terbaru", value: "newest-created" },
+              { label: "Pembuatan terlama", value: "oldest-created" },
+              { label: "Terbaru diubah", value: "updated" },
+              { label: "Judul A-Z", value: "alpha" },
+            ],
+          },
+        ]}
+        summary={`${filteredPages.length} dari ${pages.length} halaman`}
+      />
 
       {loading ? (
         <div className="text-dark-400">Memuat...</div>
-      ) : pages.length === 0 ? (
-        <div className="text-center py-16 text-dark-500">Belum ada halaman.</div>
+      ) : filteredPages.length === 0 ? (
+        <div className="text-center py-16 text-dark-500">Tidak ada halaman yang cocok.</div>
       ) : (
         <div className="rounded-2xl bg-dark-900 border border-dark-800 overflow-hidden">
           <div className="overflow-x-auto">
@@ -362,7 +429,7 @@ export default function AdminPagesPage() {
                 </tr>
               </thead>
               <tbody>
-                {pages.map((page) => (
+                {filteredPages.map((page) => (
                   <tr key={page.id} className="border-b border-dark-800 hover:bg-dark-800/50">
                     <td className="py-3 px-4 text-white font-medium">{page.title}</td>
                     <td className="py-3 px-4 text-dark-400 font-mono text-xs">/{page.slug}</td>

@@ -1,6 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
+import {
+  compareAdminDates,
+  compareAdminNumbers,
+  compareAdminStrings,
+  matchesAdminSearch,
+} from "@/lib/admin-collections";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatPrice } from "@/lib/utils";
 import { FaEdit, FaPlus, FaSave, FaTimes, FaTrash } from "react-icons/fa";
@@ -21,6 +28,9 @@ export default function AdminCouponsPage() {
   const [editing, setEditing] = useState<CouponCode | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
   const [form, setForm] = useState(emptyForm);
 
   const load = useCallback(async () => {
@@ -115,6 +125,32 @@ export default function AdminCouponsPage() {
       : formatPrice(Number(coupon.discount_value));
   }
 
+  const filteredCoupons = coupons
+    .filter((coupon) => {
+      if (statusFilter === "active" && !coupon.is_active) return false;
+      if (statusFilter === "inactive" && coupon.is_active) return false;
+      return matchesAdminSearch(
+        searchQuery,
+        coupon.code,
+        coupon.name,
+        coupon.discount_type,
+        coupon.usage_count
+      );
+    })
+    .sort((left, right) => {
+      switch (sortBy) {
+        case "oldest":
+          return compareAdminDates(left.created_at, right.created_at, "asc");
+        case "usage-most":
+          return compareAdminNumbers(left.usage_count, right.usage_count, "desc");
+        case "code":
+          return compareAdminStrings(left.code, right.code);
+        case "newest":
+        default:
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+      }
+    });
+
   if (creating || editing) {
     return (
       <div>
@@ -172,10 +208,39 @@ export default function AdminCouponsPage() {
           <FaPlus size={12} /> Tambah Kupon
         </button>
       </div>
+      <AdminCollectionToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Cari kode kupon, nama promo, atau tipe diskon..."
+        selects={[
+          {
+            label: "Status",
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: [
+              { label: "Semua status", value: "all" },
+              { label: "Aktif", value: "active" },
+              { label: "Nonaktif", value: "inactive" },
+            ],
+          },
+          {
+            label: "Urutkan",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "Kupon terbaru", value: "newest" },
+              { label: "Kupon terlama", value: "oldest" },
+              { label: "Paling sering dipakai", value: "usage-most" },
+              { label: "Kode A-Z", value: "code" },
+            ],
+          },
+        ]}
+        summary={`${filteredCoupons.length} dari ${coupons.length} kupon`}
+      />
       {loading ? (
         <div className="text-dark-400">Memuat...</div>
-      ) : coupons.length === 0 ? (
-        <div className="text-center py-16 text-dark-500">Belum ada kode kupon.</div>
+      ) : filteredCoupons.length === 0 ? (
+        <div className="text-center py-16 text-dark-500">Tidak ada kupon yang cocok.</div>
       ) : (
         <div className="rounded-2xl bg-dark-900 border border-dark-800 overflow-hidden">
           <div className="overflow-x-auto">
@@ -191,7 +256,7 @@ export default function AdminCouponsPage() {
                 </tr>
               </thead>
               <tbody>
-                {coupons.map((coupon) => (
+                {filteredCoupons.map((coupon) => (
                   <tr key={coupon.id} className="border-b border-dark-800 hover:bg-dark-800/50">
                     <td className="py-3 px-4">
                       <div className="text-primary-300 font-mono font-semibold">{coupon.code}</div>

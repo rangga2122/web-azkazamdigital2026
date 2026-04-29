@@ -1,5 +1,11 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
+import {
+  compareAdminDates,
+  compareAdminNumbers,
+  matchesAdminSearch,
+} from "@/lib/admin-collections";
 import { createClient } from "@/lib/supabase/client";
 import { formatPrice, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { FaTrash } from "react-icons/fa";
@@ -10,6 +16,8 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -63,7 +71,33 @@ export default function AdminOrdersPage() {
     load();
   }
 
-  const filtered = filter === "all" ? orders : orders.filter(o => o.status === filter);
+  const filtered = orders
+    .filter((order) => {
+      if (filter !== "all" && order.status !== filter) return false;
+      return matchesAdminSearch(
+        searchQuery,
+        order.order_code,
+        order.product_name,
+        order.buyer_name,
+        order.buyer_email,
+        order.buyer_whatsapp,
+        order.coupon_code,
+        order.referral_code
+      );
+    })
+    .sort((left, right) => {
+      switch (sortBy) {
+        case "oldest":
+          return compareAdminDates(left.created_at, right.created_at, "asc");
+        case "total-high":
+          return compareAdminNumbers(getOrderTotal(left), getOrderTotal(right), "desc");
+        case "total-low":
+          return compareAdminNumbers(getOrderTotal(left), getOrderTotal(right), "asc");
+        case "newest":
+        default:
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+      }
+    });
 
   function getOrderTotal(order: Order) {
     return Number(order.total_amount || order.price || 0);
@@ -85,6 +119,25 @@ export default function AdminOrdersPage() {
           ))}
         </div>
       </div>
+      <AdminCollectionToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Cari kode, produk, nama pembeli, WhatsApp, atau kupon..."
+        selects={[
+          {
+            label: "Urutkan",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "Pesanan terbaru", value: "newest" },
+              { label: "Pesanan terlama", value: "oldest" },
+              { label: "Total tertinggi", value: "total-high" },
+              { label: "Total terendah", value: "total-low" },
+            ],
+          },
+        ]}
+        summary={`${filtered.length} dari ${orders.length} pesanan`}
+      />
 
       {loading ? <div className="text-dark-400">Memuat...</div> : filtered.length === 0 ? <div className="text-center py-16 text-dark-500">Tidak ada pesanan.</div> : (
         <div className="rounded-2xl bg-dark-900 border border-dark-800 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-dark-700 bg-dark-850">

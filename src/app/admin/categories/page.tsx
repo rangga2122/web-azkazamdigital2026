@@ -1,5 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
+import {
+  compareAdminDates,
+  compareAdminNumbers,
+  compareAdminStrings,
+  matchesAdminSearch,
+} from "@/lib/admin-collections";
 import { createClient } from "@/lib/supabase/client";
 import { FaPlus, FaEdit, FaTrash, FaSave, FaTimes } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -10,6 +17,8 @@ export default function AdminCategoriesPage() {
   const [editing, setEditing] = useState<Category | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("order-asc");
   const [form, setForm] = useState({ name: "", slug: "", description: "", image_url: "", sort_order: 0 });
 
   useEffect(() => { load(); }, []);
@@ -37,6 +46,34 @@ export default function AdminCategoriesPage() {
     const { error } = await supabase.from("categories").delete().eq("id", id);
     if (error) { toast.error(error.message); return; } toast.success("Kategori dihapus!"); load();
   }
+
+  const filteredItems = items
+    .filter((item) =>
+      matchesAdminSearch(
+        searchQuery,
+        item.name,
+        item.slug,
+        item.description,
+        item.sort_order
+      )
+    )
+    .sort((left, right) => {
+      switch (sortBy) {
+        case "alpha":
+          return compareAdminStrings(left.name, right.name);
+        case "newest":
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+        case "oldest":
+          return compareAdminDates(left.created_at, right.created_at, "asc");
+        case "updated":
+          return compareAdminDates(left.updated_at, right.updated_at, "desc");
+        case "order-desc":
+          return compareAdminNumbers(left.sort_order, right.sort_order, "desc");
+        case "order-asc":
+        default:
+          return compareAdminNumbers(left.sort_order, right.sort_order, "asc");
+      }
+    });
 
   if (editing || creating) {
     return (
@@ -67,9 +104,30 @@ export default function AdminCategoriesPage() {
         <h1 className="text-2xl font-bold text-white">Kategori</h1>
         <button onClick={startCreate} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary-600 text-white text-sm font-semibold"><FaPlus size={12} /> Tambah</button>
       </div>
-      {loading ? <div className="text-dark-400">Memuat...</div> : items.length === 0 ? <div className="text-center py-16 text-dark-500">Belum ada kategori.</div> : (
+      <AdminCollectionToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Cari nama, slug, atau deskripsi kategori..."
+        selects={[
+          {
+            label: "Urutkan",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "Urutan manual", value: "order-asc" },
+              { label: "Urutan manual tertinggi", value: "order-desc" },
+              { label: "Nama A-Z", value: "alpha" },
+              { label: "Terbaru dibuat", value: "newest" },
+              { label: "Terlama dibuat", value: "oldest" },
+              { label: "Terbaru diubah", value: "updated" },
+            ],
+          },
+        ]}
+        summary={`${filteredItems.length} dari ${items.length} kategori`}
+      />
+      {loading ? <div className="text-dark-400">Memuat...</div> : filteredItems.length === 0 ? <div className="text-center py-16 text-dark-500">Tidak ada kategori yang cocok.</div> : (
         <div className="rounded-2xl bg-dark-900 border border-dark-800 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-dark-700 bg-dark-850"><th className="text-left text-dark-400 py-3 px-4">Nama</th><th className="text-left text-dark-400 py-3 px-4">Slug</th><th className="text-left text-dark-400 py-3 px-4">Urutan</th><th className="text-right text-dark-400 py-3 px-4">Aksi</th></tr></thead><tbody>
-          {items.map((item) => (<tr key={item.id} className="border-b border-dark-800 hover:bg-dark-800/50"><td className="py-3 px-4 text-white font-medium">{item.name}</td><td className="py-3 px-4 text-dark-400 font-mono text-xs">/{item.slug}</td><td className="py-3 px-4 text-dark-400">{item.sort_order}</td><td className="py-3 px-4 text-right"><div className="flex items-center justify-end gap-2"><button onClick={() => startEdit(item)} className="p-2 rounded-lg text-dark-400 hover:text-primary-400 hover:bg-primary-500/10"><FaEdit size={14} /></button><button onClick={() => handleDelete(item.id)} className="p-2 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10"><FaTrash size={14} /></button></div></td></tr>))}
+          {filteredItems.map((item) => (<tr key={item.id} className="border-b border-dark-800 hover:bg-dark-800/50"><td className="py-3 px-4 text-white font-medium">{item.name}</td><td className="py-3 px-4 text-dark-400 font-mono text-xs">/{item.slug}</td><td className="py-3 px-4 text-dark-400">{item.sort_order}</td><td className="py-3 px-4 text-right"><div className="flex items-center justify-end gap-2"><button onClick={() => startEdit(item)} className="p-2 rounded-lg text-dark-400 hover:text-primary-400 hover:bg-primary-500/10"><FaEdit size={14} /></button><button onClick={() => handleDelete(item.id)} className="p-2 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10"><FaTrash size={14} /></button></div></td></tr>))}
         </tbody></table></div></div>
       )}
     </div>

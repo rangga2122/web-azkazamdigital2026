@@ -5,6 +5,11 @@ import { EmbeddedHtmlPage } from "@/components/public/EmbeddedHtmlPage";
 import { AffiliateReferralTracker } from "@/components/public/AffiliateReferralTracker";
 import { ExternalHeadLinks } from "@/components/public/ExternalHeadLinks";
 import {
+  extractProductRecommendationTokens,
+  replaceProductRecommendationShortcodes,
+  type ProductRecommendationSource,
+} from "@/lib/article-product-recommendations";
+import {
   buildScopedEmbeddedStyles,
   extractEmbeddedHeadLinks,
   formatPrice,
@@ -107,11 +112,13 @@ export default async function DynamicPage({
     ? withReferral(buildPublicUrl(`/order/${page.product.slug}`), ref)
     : "";
   const pageUrl = withReferral(buildPublicUrl(`/${page.slug}`), ref);
-  const contentHtml = applyPagePlaceholders(page.content_html || "", page, {
-    checkoutUrl,
-    pageUrl,
-    referralCode: ref,
-  });
+  const contentHtml = await renderPageContent(
+    applyPagePlaceholders(page.content_html || "", page, {
+      checkoutUrl,
+      pageUrl,
+      referralCode: ref,
+    })
+  );
   const hasStandaloneHtml = page.content_html
     ? isStandaloneHtml(page.content_html)
     : false;
@@ -397,4 +404,61 @@ function normalizeComparablePath(value: string) {
   } catch {
     return trimmedValue.replace(/\/+$/, "") || "/";
   }
+}
+
+async function renderPageContent(contentHtml: string) {
+  const tokens = extractProductRecommendationTokens(contentHtml);
+  if (tokens.length === 0) {
+    return contentHtml;
+  }
+
+  const slugs = Array.from(new Set(tokens.map((token) => token.slug)));
+  const supabase = await createServiceRoleClient();
+  const { data: products } = await supabase
+    .from("products")
+    .select(`
+      title,
+      slug,
+      thumbnail_url,
+      short_description,
+      click_target_type,
+      is_active,
+      click_target_page:pages!products_click_target_page_id_fkey (
+        slug
+      )
+    `)
+    .in("slug", slugs)
+    .eq("is_active", true);
+
+  const productsBySlug = ((products || []) as Array<
+    ProductRecommendationSource & {
+      is_active: boolean;
+      click_target_page?: { slug: string } | Array<{ slug: string }> | null;
+    }
+  >).reduce<Record<string, ProductRecommendationSource>>(
+    (accumulator, product) => {
+      accumulator[product.slug] = {
+        title: product.title,
+        slug: product.slug,
+        thumbnail_url: product.thumbnail_url,
+        short_description: product.short_description,
+        click_target_type: product.click_target_type,
+        click_target_page_slug: getRelatedPageSlug(product.click_target_page),
+      };
+      return accumulator;
+    },
+    {}
+  );
+
+  return replaceProductRecommendationShortcodes(contentHtml, productsBySlug);
+}
+
+function getRelatedPageSlug(
+  relation: { slug: string } | Array<{ slug: string }> | null | undefined
+) {
+  if (Array.isArray(relation)) {
+    return relation[0]?.slug || null;
+  }
+
+  return relation?.slug || null;
 }

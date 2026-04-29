@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
+import { compareAdminDates, matchesAdminSearch } from "@/lib/admin-collections";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils";
 import { FaEnvelopeOpenText, FaEnvelope, FaTrash } from "react-icons/fa";
@@ -13,6 +15,8 @@ export default function AdminInboxPage() {
   const [messages, setMessages] = useState<ContactMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<InboxFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
   const [loading, setLoading] = useState(true);
 
   const loadMessages = useCallback(async () => {
@@ -44,10 +48,34 @@ export default function AdminInboxPage() {
   }, [loadMessages]);
 
   const filteredMessages = useMemo(() => {
-    if (filter === "unread") return messages.filter((message) => !message.is_read);
-    if (filter === "read") return messages.filter((message) => message.is_read);
-    return messages;
-  }, [filter, messages]);
+    const visibleMessages = messages.filter((message) => {
+      if (filter === "unread" && message.is_read) return false;
+      if (filter === "read" && !message.is_read) return false;
+      return matchesAdminSearch(
+        searchQuery,
+        message.subject,
+        message.name,
+        message.email,
+        message.message,
+        message.source_path
+      );
+    });
+
+    return visibleMessages.sort((left, right) => {
+      switch (sortBy) {
+        case "oldest":
+          return compareAdminDates(left.created_at, right.created_at, "asc");
+        case "unread-first":
+          if (left.is_read !== right.is_read) {
+            return left.is_read ? 1 : -1;
+          }
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+        case "newest":
+        default:
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+      }
+    });
+  }, [filter, messages, searchQuery, sortBy]);
 
   const selectedMessage =
     filteredMessages.find((message) => message.id === selectedId) ||
@@ -150,6 +178,24 @@ export default function AdminInboxPage() {
           ))}
         </div>
       </div>
+      <AdminCollectionToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Cari subjek, nama, email, isi pesan, atau sumber..."
+        selects={[
+          {
+            label: "Urutkan",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "Pesan terbaru", value: "newest" },
+              { label: "Pesan terlama", value: "oldest" },
+              { label: "Belum dibaca di atas", value: "unread-first" },
+            ],
+          },
+        ]}
+        summary={`${filteredMessages.length} dari ${messages.length} pesan`}
+      />
 
       {loading ? (
         <div className="text-dark-400">Memuat inbox...</div>

@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
+import {
+  compareAdminDates,
+  compareAdminStrings,
+  matchesAdminSearch,
+} from "@/lib/admin-collections";
 import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_ARTICLE_AUTOMATION_SETTINGS,
@@ -145,6 +151,9 @@ export default function AdminArticlesPage() {
   const [generating, setGenerating] = useState(false);
   const [generatingAutomationSuggestions, setGeneratingAutomationSuggestions] =
     useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("latest");
   const [aiForm, setAiForm] = useState(DEFAULT_AI_FORM);
   const [recommendationForm, setRecommendationForm] = useState(
     DEFAULT_RECOMMENDATION_FORM
@@ -219,6 +228,41 @@ export default function AdminArticlesPage() {
     setRecommendationForm(DEFAULT_RECOMMENDATION_FORM);
     setArticleForm(mapArticleToForm(article));
   }
+
+  const filteredArticles = articles
+    .filter((article) => {
+      if (statusFilter !== "all" && article.status !== statusFilter) return false;
+      return matchesAdminSearch(
+        searchQuery,
+        article.title,
+        article.slug,
+        article.focus_keyword,
+        article.author_name,
+        article.excerpt,
+        article.tags.join(" ")
+      );
+    })
+    .sort((left, right) => {
+      switch (sortBy) {
+        case "created":
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+        case "oldest":
+          return compareAdminDates(
+            left.published_at || left.created_at,
+            right.published_at || right.created_at,
+            "asc"
+          );
+        case "title":
+          return compareAdminStrings(left.title, right.title);
+        case "latest":
+        default:
+          return compareAdminDates(
+            left.published_at || left.created_at,
+            right.published_at || right.created_at,
+            "desc"
+          );
+      }
+    });
 
   function cancelEditor() {
     setEditingArticle(null);
@@ -1360,12 +1404,41 @@ export default function AdminArticlesPage() {
             </p>
           </div>
         </div>
+        <AdminCollectionToolbar
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder="Cari judul, slug, keyword, author, atau tag artikel..."
+          selects={[
+            {
+              label: "Status",
+              value: statusFilter,
+              onChange: setStatusFilter,
+              options: [
+                { label: "Semua status", value: "all" },
+                { label: "Draf", value: "draft" },
+                { label: "Diterbitkan", value: "published" },
+              ],
+            },
+            {
+              label: "Urutkan",
+              value: sortBy,
+              onChange: setSortBy,
+              options: [
+                { label: "Postingan terbaru", value: "latest" },
+                { label: "Pembuatan terbaru", value: "created" },
+                { label: "Postingan terlama", value: "oldest" },
+                { label: "Judul A-Z", value: "title" },
+              ],
+            },
+          ]}
+          summary={`${filteredArticles.length} dari ${articles.length} artikel`}
+        />
 
         {loading ? (
           <div className="text-dark-400">Memuat artikel...</div>
-        ) : articles.length === 0 ? (
+        ) : filteredArticles.length === 0 ? (
           <div className="rounded-xl border border-dark-800 bg-dark-950/70 px-4 py-10 text-center text-dark-400">
-            Belum ada artikel.
+            Tidak ada artikel yang cocok.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1380,7 +1453,7 @@ export default function AdminArticlesPage() {
                 </tr>
               </thead>
               <tbody>
-                {articles.map((article) => (
+                {filteredArticles.map((article) => (
                   <tr
                     key={article.id}
                     className="border-b border-dark-800 hover:bg-dark-800/40"

@@ -1,5 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
+import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
+import {
+  compareAdminDates,
+  compareAdminNumbers,
+  compareAdminStrings,
+  matchesAdminSearch,
+} from "@/lib/admin-collections";
 import { createClient } from "@/lib/supabase/client";
 import { FaPlus, FaEdit, FaTrash, FaSave, FaTimes } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -10,6 +17,9 @@ export default function AdminFAQsPage() {
   const [editing, setEditing] = useState<FAQ | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("order-asc");
   const [form, setForm] = useState({ question: "", answer: "", is_active: true, sort_order: 0 });
 
   useEffect(() => { load(); }, []);
@@ -26,6 +36,26 @@ export default function AdminFAQsPage() {
   }
 
   async function handleDelete(id: string) { if (!confirm("Hapus pertanyaan umum?")) return; const supabase = createClient(); await supabase.from("faqs").delete().eq("id", id); toast.success("Dihapus!"); load(); }
+
+  const filteredItems = items
+    .filter((item) => {
+      if (statusFilter === "active" && !item.is_active) return false;
+      if (statusFilter === "inactive" && item.is_active) return false;
+      return matchesAdminSearch(searchQuery, item.question, item.answer);
+    })
+    .sort((left, right) => {
+      switch (sortBy) {
+        case "newest":
+          return compareAdminDates(left.created_at, right.created_at, "desc");
+        case "question":
+          return compareAdminStrings(left.question, right.question);
+        case "order-desc":
+          return compareAdminNumbers(left.sort_order, right.sort_order, "desc");
+        case "order-asc":
+        default:
+          return compareAdminNumbers(left.sort_order, right.sort_order, "asc");
+      }
+    });
 
   if (editing || creating) {
     return (
@@ -44,9 +74,38 @@ export default function AdminFAQsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6"><h1 className="text-2xl font-bold text-white">Pertanyaan Umum</h1><button onClick={startCreate} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary-600 text-white text-sm font-semibold"><FaPlus size={12} /> Tambah</button></div>
-      {loading ? <div className="text-dark-400">Memuat...</div> : items.length === 0 ? <div className="text-center py-16 text-dark-500">Belum ada pertanyaan umum.</div> : (
+      <AdminCollectionToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Cari pertanyaan atau jawaban..."
+        selects={[
+          {
+            label: "Status",
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: [
+              { label: "Semua status", value: "all" },
+              { label: "Aktif", value: "active" },
+              { label: "Nonaktif", value: "inactive" },
+            ],
+          },
+          {
+            label: "Urutkan",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "Urutan manual", value: "order-asc" },
+              { label: "Urutan manual tertinggi", value: "order-desc" },
+              { label: "Terbaru dibuat", value: "newest" },
+              { label: "Pertanyaan A-Z", value: "question" },
+            ],
+          },
+        ]}
+        summary={`${filteredItems.length} dari ${items.length} FAQ`}
+      />
+      {loading ? <div className="text-dark-400">Memuat...</div> : filteredItems.length === 0 ? <div className="text-center py-16 text-dark-500">Tidak ada pertanyaan umum yang cocok.</div> : (
         <div className="space-y-3">
-          {items.map(i => (
+          {filteredItems.map(i => (
             <div key={i.id} className="rounded-xl bg-dark-900 border border-dark-800 p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1"><div className="text-white font-medium mb-1">{i.question}</div><div className="text-dark-400 text-sm">{i.answer}</div></div>
