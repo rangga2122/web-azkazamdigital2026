@@ -74,6 +74,7 @@ export default function UserDashboardPage() {
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [clickCount, setClickCount] = useState(0);
   const [conversionCount, setConversionCount] = useState(0);
+  const [licensedProductIds, setLicensedProductIds] = useState<string[]>([]);
   const [profileForm, setProfileForm] = useState({
     full_name: "",
     referral_code: "",
@@ -98,11 +99,16 @@ export default function UserDashboardPage() {
 
     setUserEmail(user.email || "");
 
-    const [{ data: profileRow }, { data: orderRows }, { data: affiliateRow }] =
-      await Promise.all([
+    const [
+      { data: profileRow },
+      { data: orderRows },
+      { data: affiliateRow },
+      licenseSyncResponse,
+    ] = await Promise.all([
         supabase.from("users_profiles").select("*").eq("id", user.id).maybeSingle(),
         supabase.from("orders").select("*").order("created_at", { ascending: false }),
         supabase.from("affiliates").select("*").maybeSingle(),
+        fetch("/api/dashboard/license-products", { cache: "no-store" }).catch(() => null),
       ]);
 
     const typedOrders = (orderRows || []) as Order[];
@@ -245,6 +251,15 @@ export default function UserDashboardPage() {
     setLandingPagesByProductId(groupedLandingPages);
     setAffiliate((affiliateRow || null) as Affiliate | null);
 
+    if (licenseSyncResponse?.ok) {
+      const licensePayload = (await licenseSyncResponse.json()) as {
+        data?: { licensedProductIds?: string[] };
+      };
+      setLicensedProductIds(licensePayload.data?.licensedProductIds || []);
+    } else {
+      setLicensedProductIds([]);
+    }
+
     if (affiliatePayload) {
       const [linksResult, commissionsResult, clicksResult, conversionsResult] =
         affiliatePayload;
@@ -299,6 +314,11 @@ export default function UserDashboardPage() {
     [paidOrders, productsById]
   );
 
+  const licensedProductIdSet = useMemo(
+    () => new Set(licensedProductIds),
+    [licensedProductIds]
+  );
+
   const totalCommission = useMemo(
     () => commissions.reduce((sum, item) => sum + Number(item.amount || 0), 0),
     [commissions]
@@ -312,6 +332,18 @@ export default function UserDashboardPage() {
         landingPages: link.product_id ? landingPagesByProductId[link.product_id] || [] : [],
       })),
     [affiliateLinks, landingPagesByProductId, productsById]
+  );
+
+  const licensedAffiliateProducts = useMemo(
+    () =>
+      affiliateProducts.filter(
+        ({ link, product }) =>
+          Boolean(
+            (link.product_id && licensedProductIdSet.has(link.product_id)) ||
+              (product?.id && licensedProductIdSet.has(product.id))
+          )
+      ),
+    [affiliateProducts, licensedProductIdSet]
   );
 
   async function handleLogout() {
@@ -480,12 +512,12 @@ export default function UserDashboardPage() {
                 {[
                   {
                     label: "Produk Paid",
-                    value: paidOrders.length.toString(),
+                    value: purchasedProducts.length.toString(),
                     icon: FaBoxOpen,
                   },
                   {
                     label: "Link Afiliasi",
-                    value: affiliateLinks.length.toString(),
+                    value: licensedAffiliateProducts.length.toString(),
                     icon: FaLink,
                   },
                   {
@@ -572,7 +604,7 @@ export default function UserDashboardPage() {
             <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
               <h2 className="text-lg font-semibold text-white">Produk Saya</h2>
               <p className="mt-1 text-sm text-dark-400">
-                Hanya produk yang sudah dibeli dengan status pembayaran `paid`.
+                Semua produk yang sudah dibeli dengan status pembayaran `paid`.
               </p>
               <div className="mt-5 grid gap-4">
                 {purchasedProducts.length === 0 ? (
@@ -650,15 +682,15 @@ export default function UserDashboardPage() {
             <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
               <h2 className="text-lg font-semibold text-white">Afiliasi Saya</h2>
               <p className="mt-1 text-sm text-dark-400">
-                Link afiliasi hanya aktif untuk produk yang sudah Anda beli.
+                Hanya produk dengan lisensi aktif yang boleh dijual dari dashboard ini.
               </p>
               <div className="mt-5 space-y-4">
-                {affiliateProducts.length === 0 ? (
+                {licensedAffiliateProducts.length === 0 ? (
                   <div className="rounded-xl border border-dark-800 bg-dark-800 px-4 py-10 text-center text-dark-400">
-                    Link afiliasi belum tersedia.
+                    Tidak ada produk yang lolos lisensi aktif untuk dijual.
                   </div>
                 ) : (
-                  affiliateProducts.map(({ link, product, landingPages }) => (
+                  licensedAffiliateProducts.map(({ link, product, landingPages }) => (
                     <div
                       key={link.id}
                       className="rounded-xl border border-dark-800 bg-dark-800 p-4"

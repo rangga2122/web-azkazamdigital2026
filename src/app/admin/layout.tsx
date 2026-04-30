@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   FaHome, FaFileAlt, FaBox, FaTags, FaStar, FaQuestionCircle,
   FaShoppingCart, FaUsers, FaMoneyBillWave, FaCog, FaImage,
-  FaChartBar, FaSignOutAlt, FaBars, FaTimes, FaBullhorn, FaTicketAlt, FaInbox, FaWhatsapp, FaNewspaper,
+  FaChartBar, FaSignOutAlt, FaBars, FaTimes, FaBullhorn, FaTicketAlt, FaInbox, FaWhatsapp, FaNewspaper, FaShieldAlt,
 } from "react-icons/fa";
 import toast from "react-hot-toast";
 
@@ -120,6 +120,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         icon: FaMoneyBillWave,
         label: "Komisi",
         iconColor: "text-lime-500",
+      },
+      {
+        href: "/admin/licenses",
+        icon: FaShieldAlt,
+        label: "Lisensi",
+        iconColor: "text-violet-400",
       },
       {
         href: "/admin/settings",

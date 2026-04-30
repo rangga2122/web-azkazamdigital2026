@@ -10,6 +10,7 @@ import {
   matchesAdminSearch,
 } from "@/lib/admin-collections";
 import { copyTextToClipboard } from "@/lib/client-clipboard";
+import { getProductSyncKeyword } from "@/lib/license-product-sync";
 import { createClient } from "@/lib/supabase/client";
 import { formatPrice, getProductCommissionLabel } from "@/lib/utils";
 import { FaCopy, FaExternalLinkAlt, FaImage, FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaEye } from "react-icons/fa";
@@ -539,7 +540,13 @@ export default function AdminProductsPage() {
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
                         {p.thumbnail_url ? <img src={p.thumbnail_url} className="h-10 w-10 rounded-lg object-cover" alt="" /> : <div className="h-10 w-10 rounded-lg bg-dark-700 flex items-center justify-center text-xs font-bold text-dark-400">{p.title.charAt(0)}</div>}
-                        <div><div className="text-white font-medium">{p.title}</div><div className="text-dark-500 text-xs font-mono">/{p.slug}</div></div>
+                        <div>
+                          <div className="text-white font-medium">{p.title}</div>
+                          <div className="text-dark-500 text-xs font-mono">/{p.slug}</div>
+                          <div className="mt-1 text-[11px] text-primary-400">
+                            Sync lisensi: {getProductSyncKeyword(p)}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="py-3 px-4 text-white font-semibold">{formatPrice(p.price)}</td>
