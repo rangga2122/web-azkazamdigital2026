@@ -17,7 +17,6 @@ import {
   resolvePaidAccessTemplate,
   sendOrderStatusWhatsappNotification,
 } from "@/lib/whatsapp-notifications";
-import { syncOrderLeadToLicenseManager } from "@/lib/license-order-sync";
 
 const VALID_ORDER_STATUSES = ["pending", "paid", "failed", "cancelled"] as const;
 
@@ -329,23 +328,6 @@ export async function POST(
       ensureWhatsappAutomationLoop();
     } catch (followupError) {
       console.error("Sync WhatsApp followups on status change error:", followupError);
-    }
-
-    try {
-      await syncOrderLeadToLicenseManager({
-        orderId: updatedOrder.id,
-        orderCode: updatedOrder.order_code,
-        buyerName: updatedOrder.buyer_name,
-        buyerEmail: updatedOrder.buyer_email,
-        buyerWhatsapp: updatedOrder.buyer_whatsapp,
-        productName: updatedOrder.product_name,
-        subtotalAmount: Number(updatedOrder.subtotal || 0),
-        uniqueCode: Number(updatedOrder.unique_code || 0),
-        totalAmount: Number(updatedOrder.total_amount || 0),
-        status: updatedOrder.status,
-      });
-    } catch (syncError) {
-      console.error("Sync order lead status to license manager error:", syncError);
     }
 
     return NextResponse.json({

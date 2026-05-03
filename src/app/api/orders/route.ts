@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import {
   createServerSupabaseClient,
   createServiceRoleClient,
@@ -18,7 +18,6 @@ import {
   productImageFromProduct,
   sendOrderCreatedWhatsappNotifications,
 } from "@/lib/whatsapp-notifications";
-import { syncOrderLeadToLicenseManager } from "@/lib/license-order-sync";
 
 type CreateOrderPayload = {
   product_id?: string;
@@ -254,52 +253,54 @@ export async function POST(request: NextRequest) {
       order.order_code
     );
 
-    try {
-      await runPostOrderSideEffects({
-        origin,
-        thankYouUrl,
-        dynamicQrisUrl,
-        whatsappConfirmationUrl,
-        buyerName: buyer_name,
-        buyerEmail: normalizedBuyerEmail,
-        buyerWhatsapp: buyer_whatsapp,
-        subtotal,
-        discountAmount,
-        uniqueCode,
-        totalAmount,
-        settings: {
-          site_name: settings?.site_name || null,
-          email: settings?.email || null,
-          payment_bank_name: settings?.payment_bank_name || null,
-          payment_account_number: settings?.payment_account_number || null,
-          payment_account_name: settings?.payment_account_name || null,
-          payment_qris_url: settings?.payment_qris_url || null,
-          whatsapp_number: settings?.whatsapp_number || null,
-          social_links:
-            (settings?.social_links as Record<string, unknown> | null) || null,
-        },
-        product: {
-          id: product.id,
-          title: product.title,
-          thumbnail_url: product.thumbnail_url || null,
-        },
-        order: {
-          id: order.id,
-          order_code: order.order_code,
-          created_at: order.created_at,
-          status: order.status,
-        },
-      });
-    } catch (error) {
-      console.error("Run post-order side effects error:", error);
-    }
+    after(async () => {
+      try {
+        await runPostOrderSideEffects({
+          origin,
+          thankYouUrl,
+          dynamicQrisUrl,
+          whatsappConfirmationUrl,
+          buyerName: buyer_name,
+          buyerEmail: normalizedBuyerEmail,
+          buyerWhatsapp: buyer_whatsapp,
+          subtotal,
+          discountAmount,
+          uniqueCode,
+          totalAmount,
+          settings: {
+            site_name: settings?.site_name || null,
+            email: settings?.email || null,
+            payment_bank_name: settings?.payment_bank_name || null,
+            payment_account_number: settings?.payment_account_number || null,
+            payment_account_name: settings?.payment_account_name || null,
+            payment_qris_url: settings?.payment_qris_url || null,
+            whatsapp_number: settings?.whatsapp_number || null,
+            social_links:
+              (settings?.social_links as Record<string, unknown> | null) || null,
+          },
+          product: {
+            id: product.id,
+            title: product.title,
+            thumbnail_url: product.thumbnail_url || null,
+          },
+          order: {
+            id: order.id,
+            order_code: order.order_code,
+            created_at: order.created_at,
+            status: order.status,
+          },
+        });
+      } catch (error) {
+        console.error("Run post-order side effects error:", error);
+      }
+    });
 
     return NextResponse.json({
       success: true,
       order_code: order.order_code,
       total_amount: totalAmount,
       thank_you_url: thankYouUrl,
-      background_jobs: "completed",
+      background_jobs: "scheduled",
     });
   } catch (error) {
     console.error("Create order error:", error);
@@ -411,25 +412,12 @@ async function runPostOrderSideEffects(input: PostOrderSideEffectsInput) {
     }).then(() => {
       ensureWhatsappAutomationLoop();
     }),
-    syncOrderLeadToLicenseManager({
-      orderId: input.order.id,
-      orderCode: input.order.order_code,
-      buyerName: input.buyerName,
-      buyerEmail: input.buyerEmail,
-      buyerWhatsapp: input.buyerWhatsapp,
-      productName: input.product.title,
-      subtotalAmount: input.subtotal,
-      uniqueCode: input.uniqueCode,
-      totalAmount: input.totalAmount,
-      status: input.order.status,
-    }),
   ]);
 
   const labels = [
     "Send order invoice email",
     "Send order WhatsApp notification",
     "Schedule WhatsApp followups",
-    "Sync order lead to license manager",
   ];
 
   tasks.forEach((task, index) => {
