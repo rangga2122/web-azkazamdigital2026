@@ -118,6 +118,21 @@ export async function addLicenseUsers(input: {
   const client = requireLicenseClient();
   const results: Array<{ productName: string; status: "success" | "duplicate" | "error" }> =
     [];
+  const requestedProductNames = input.productEntries
+    .map((entry) => entry.productName)
+    .filter(Boolean);
+  const { data: productDefaults } = requestedProductNames.length
+    ? await client
+        .from("products")
+        .select("name, default_features")
+        .in("name", requestedProductNames)
+    : { data: [] as Array<{ name: string; default_features: string[] | null }> };
+  const defaultFeaturesByProduct = new Map(
+    (productDefaults || []).map((product) => [
+      product.name,
+      Array.isArray(product.default_features) ? product.default_features : [],
+    ])
+  );
 
   for (const entry of input.productEntries) {
     const existing = await client
@@ -137,7 +152,12 @@ export async function addLicenseUsers(input: {
       email: input.email.toLowerCase(),
       role: input.role,
       expiry_date: entry.expiryDate || null,
-      allowed_features: input.allowedFeatures.length ? input.allowedFeatures : null,
+      allowed_features:
+        input.allowedFeatures.length > 0
+          ? input.allowedFeatures
+          : defaultFeaturesByProduct.get(entry.productName)?.length
+          ? defaultFeaturesByProduct.get(entry.productName)
+          : null,
       max_sessions: Math.max(Number(entry.maxSessions || 1), 1),
       product_name: entry.productName,
       is_active: true,

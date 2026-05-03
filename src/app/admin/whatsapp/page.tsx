@@ -5,13 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   getWhatsappNotificationConfig,
+  type PaidAccessEntry,
   serializeWhatsappNotificationConfig,
   type WhatsappApiProvider,
   type WhatsappDeviceInfo,
   type WhatsappNotificationConfig,
   type WhatsappStatus,
 } from "@/lib/whatsapp-notifications";
-import type { WhatsappBroadcast, WhatsappFollowupJob } from "@/types";
+import type { Product, WhatsappBroadcast, WhatsappFollowupJob } from "@/types";
 import {
   FaClock,
   FaImage,
@@ -70,6 +71,9 @@ export default function AdminWhatsappPage() {
   const [automationBusy, setAutomationBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("notifications");
   const [devices, setDevices] = useState<WhatsappDeviceInfo[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<
+    Array<Pick<Product, "id" | "title">>
+  >([]);
   const [dashboard, setDashboard] = useState<AutomationDashboard>({
     activeBroadcast: null,
     recentBroadcasts: [],
@@ -102,16 +106,27 @@ export default function AdminWhatsappPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const { data, error } = await supabase
-      .from("site_settings")
-      .select("id, whatsapp_number, social_links")
-      .limit(1)
-      .single();
+    const [{ data, error }, { data: products, error: productsError }] = await Promise.all([
+      supabase
+        .from("site_settings")
+        .select("id, whatsapp_number, social_links")
+        .limit(1)
+        .single(),
+      supabase.from("products").select("id, title").order("title", { ascending: true }),
+    ]);
 
     if (error || !data) {
       toast.error(error?.message || "Pengaturan situs tidak ditemukan.");
       setLoading(false);
       return;
+    }
+
+    if (productsError) {
+      toast.error(productsError.message || "Gagal memuat daftar produk.");
+    } else {
+      setCatalogProducts(
+        (products || []) as Array<Pick<Product, "id" | "title">>
+      );
     }
 
     const links = (data.social_links || {}) as Record<string, unknown>;
@@ -361,6 +376,51 @@ export default function AdminWhatsappPage() {
           : [...current[key], status],
       };
     });
+  }
+
+  function addPaidAccessEntry(productId: string) {
+    const product = catalogProducts.find((item) => item.id === productId);
+    if (!product || !config) {
+      toast.error("Pilih produk yang valid.");
+      return;
+    }
+
+    if (config.paidAccessEntries.some((entry) => entry.productId === product.id)) {
+      toast.error("Produk ini sudah punya template akses.");
+      return;
+    }
+
+    updateField("paidAccessEntries", [
+      ...config.paidAccessEntries,
+      {
+        productId: product.id,
+        productTitle: product.title,
+        whatsappMessage: "",
+        emailSubject: `Akses ${product.title}`,
+        emailMessage: "",
+      },
+    ]);
+  }
+
+  function updatePaidAccessEntry(
+    productId: string,
+    patch: Partial<PaidAccessEntry>
+  ) {
+    if (!config) return;
+    updateField(
+      "paidAccessEntries",
+      config.paidAccessEntries.map((entry) =>
+        entry.productId === productId ? { ...entry, ...patch } : entry
+      )
+    );
+  }
+
+  function removePaidAccessEntry(productId: string) {
+    if (!config) return;
+    updateField(
+      "paidAccessEntries",
+      config.paidAccessEntries.filter((entry) => entry.productId !== productId)
+    );
   }
 
   if (loading || !config) {
@@ -639,6 +699,118 @@ export default function AdminWhatsappPage() {
                 onChange={(value) => updateField("statusTemplate", value)}
               />
               <TemplateHint />
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-dark-800 bg-dark-900 p-6 shadow-xl shadow-slate-950/5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h2 className="font-semibold text-white">Akses Produk Saat Dibayar</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-dark-400">
+                  Saat status order berubah ke <strong className="text-white">Dibayar</strong>,
+                  sistem akan mengambil template di bawah sesuai produk yang dibeli, lalu
+                  mengirim akses via email dan/atau WhatsApp.
+                </p>
+              </div>
+              <div className="min-w-[280px] rounded-2xl border border-dark-700 bg-dark-950/50 p-4">
+                <label className="mb-2 block text-sm font-medium text-dark-300">Tambah Produk</label>
+                <select
+                  defaultValue=""
+                  onChange={(event) => {
+                    const productId = event.target.value;
+                    if (!productId) return;
+                    addPaidAccessEntry(productId);
+                    event.target.value = "";
+                  }}
+                  className="w-full rounded-2xl border border-dark-700 bg-dark-800 px-4 py-3 text-white shadow-sm transition focus:border-primary-500/50 focus:outline-none focus:ring-4 focus:ring-primary-500/10"
+                >
+                  <option value="">Pilih produk...</option>
+                  {catalogProducts
+                    .filter(
+                      (product) =>
+                        !config.paidAccessEntries.some(
+                          (entry) => entry.productId === product.id
+                        )
+                    )
+                    .map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.title}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {config.paidAccessEntries.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-dark-700 bg-dark-950/30 px-4 py-6 text-sm text-dark-400">
+                  Belum ada template akses produk. Tambahkan produk dulu dari dropdown di kanan.
+                </div>
+              ) : (
+                config.paidAccessEntries.map((entry) => (
+                  <div
+                    key={entry.productId}
+                    className="rounded-2xl border border-dark-800 bg-dark-950/40 p-4"
+                  >
+                    <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-white">{entry.productTitle}</div>
+                        <div className="mt-1 text-xs text-dark-500">{entry.productId}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePaidAccessEntry(entry.productId)}
+                        className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/20"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                      <div>
+                        <Field
+                          label="Subjek Email"
+                          value={entry.emailSubject}
+                          onChange={(value) =>
+                            updatePaidAccessEntry(entry.productId, {
+                              emailSubject: value,
+                            })
+                          }
+                          placeholder={`Akses ${entry.productTitle}`}
+                        />
+                        <div className="mt-4">
+                          <TemplateField
+                            label="Pesan Akses via Email"
+                            value={entry.emailMessage}
+                            onChange={(value) =>
+                              updatePaidAccessEntry(entry.productId, {
+                                emailMessage: value,
+                              })
+                            }
+                            rows={9}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <TemplateField
+                          label="Pesan Akses via WhatsApp"
+                          value={entry.whatsappMessage}
+                          onChange={(value) =>
+                            updatePaidAccessEntry(entry.productId, {
+                              whatsappMessage: value,
+                            })
+                          }
+                          rows={13}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="mt-5">
+              <PaidAccessHint />
             </div>
           </section>
 
@@ -1407,6 +1579,22 @@ function TemplateHint() {
       <code>{"{last_order_date}"}</code>, <code>{"{last_order_total}"}</code>.
       Broadcast juga mendukung spintax sederhana seperti{" "}
       <code>{"{Promo A|Promo B|Promo C}"}</code>.
+    </p>
+  );
+}
+
+function PaidAccessHint() {
+  return (
+    <p className="text-xs leading-6 text-dark-500">
+      Variabel akses produk: <code>{"{customer_name}"}</code>,{" "}
+      <code>{"{customer_email}"}</code>, <code>{"{customer_phone}"}</code>,{" "}
+      <code>{"{product_name}"}</code>, <code>{"{order_id}"}</code>,{" "}
+      <code>{"{order_total}"}</code>, <code>{"{login_email}"}</code>,{" "}
+      <code>{"{login_password}"}</code>, <code>{"{login_url}"}</code>,{" "}
+      <code>{"{dashboard_url}"}</code>, <code>{"{register_url}"}</code>,{" "}
+      <code>{"{affiliate_code}"}</code>, <code>{"{product_download_url}"}</code>,{" "}
+      <code>{"{product_demo_url}"}</code>, <code>{"{product_purchase_url}"}</code>,{" "}
+      <code>{"{site_title}"}</code>.
     </p>
   );
 }

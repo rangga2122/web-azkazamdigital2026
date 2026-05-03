@@ -5,6 +5,7 @@ import {
 } from "@/lib/supabase/server";
 import { sendPaidOrderEmail } from "@/lib/email";
 import { ensureAffiliateAuthAccount } from "@/lib/affiliate-auth";
+import { addLicenseUsers } from "@/lib/license-manager";
 import {
   ensureWhatsappAutomationLoop,
   syncOrderWhatsappFollowups,
@@ -12,6 +13,8 @@ import {
 import {
   buildWhatsappOrderContext,
   getWhatsappNotificationConfig,
+  resolvePaidAccessEntry,
+  resolvePaidAccessTemplate,
   sendOrderStatusWhatsappNotification,
 } from "@/lib/whatsapp-notifications";
 import { syncOrderLeadToLicenseManager } from "@/lib/license-order-sync";
@@ -19,6 +22,17 @@ import { syncOrderLeadToLicenseManager } from "@/lib/license-order-sync";
 const VALID_ORDER_STATUSES = ["pending", "paid", "failed", "cancelled"] as const;
 
 type OrderStatus = (typeof VALID_ORDER_STATUSES)[number];
+
+type LicenseRegistrationPayload = {
+  enabled: boolean;
+  role: "admin" | "user";
+  allowedFeatures: string[];
+  productEntries: Array<{
+    productName: string;
+    expiryDate?: string | null;
+    maxSessions?: number | null;
+  }>;
+};
 
 export async function POST(
   request: NextRequest,
@@ -46,7 +60,10 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = (await request.json()) as { status?: string };
+    const body = (await request.json()) as {
+      status?: string;
+      licenseRegistration?: unknown;
+    };
     const nextStatus = body.status as OrderStatus | undefined;
 
     if (!nextStatus || !VALID_ORDER_STATUSES.includes(nextStatus)) {
@@ -90,8 +107,82 @@ export async function POST(
     let whatsappResult: { customerSent?: boolean; skipped?: boolean; error?: string } = {
       skipped: true,
     };
+    let licenseResult: {
+      skipped?: boolean;
+      created?: number;
+      duplicate?: number;
+      failed?: number;
+      error?: string;
+    } = {
+      skipped: true,
+    };
+    let paidAccessEmailMessage: string | null = null;
+    let paidAccessWhatsappMessage: string | null = null;
+    let paidAccessEmailSubject: string | null = null;
+
+    const [{ data: settings }, { data: affiliate }, { data: product }] = await Promise.all([
+      serviceSupabase
+        .from("site_settings")
+        .select("site_name, email, whatsapp_number, social_links")
+        .limit(1)
+        .single(),
+      serviceSupabase
+        .from("affiliates")
+        .select("referral_code, user_id")
+        .eq("email", updatedOrder.buyer_email)
+        .maybeSingle(),
+      updatedOrder.product_id
+        ? serviceSupabase
+            .from("products")
+            .select("id, title, slug, thumbnail_url, digital_file_url, demo_url, purchase_url")
+            .eq("id", updatedOrder.product_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    const origin =
+      request.nextUrl.origin ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "http://localhost:3000";
+    const loginUrl = new URL("/affiliate/login", origin).toString();
+    const registerUrl = new URL("/affiliate/register", origin).toString();
+    const dashboardUrl = new URL("/dashboard", origin).toString();
+    const whatsappConfig = getWhatsappNotificationConfig(
+      settings?.social_links as Record<string, unknown> | null,
+      settings?.whatsapp_number || null
+    );
 
     if (existingOrder.status !== "paid" && updatedOrder.status === "paid") {
+      const licenseRegistration = normalizeLicenseRegistration(body.licenseRegistration);
+
+      if (licenseRegistration.enabled && licenseRegistration.productEntries.length > 0) {
+        try {
+          const licenseData = await addLicenseUsers({
+            email: updatedOrder.buyer_email,
+            role: licenseRegistration.role,
+            allowedFeatures: licenseRegistration.allowedFeatures,
+            productEntries: licenseRegistration.productEntries,
+          });
+          const results = licenseData.results || [];
+          licenseResult = {
+            skipped: false,
+            created: results.filter((item) => item.status === "success").length,
+            duplicate: results.filter((item) => item.status === "duplicate").length,
+            failed: results.filter((item) => item.status === "error").length,
+          };
+        } catch (error) {
+          console.error("Auto register license users from order error:", error);
+          licenseResult = {
+            skipped: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Registrasi lisensi otomatis gagal.",
+          };
+        }
+      }
+
       let authAccount = {
         userId: null as string | null,
         createdAutomatically: false,
@@ -108,26 +199,45 @@ export async function POST(
         console.error("Auto create affiliate auth account error:", error);
       }
 
-      const [{ data: settings }, { data: affiliate }] = await Promise.all([
-        serviceSupabase
-          .from("site_settings")
-          .select("site_name, email")
-          .limit(1)
-          .single(),
-        serviceSupabase
-          .from("affiliates")
-          .select("referral_code, user_id")
-          .eq("email", updatedOrder.buyer_email)
-          .maybeSingle(),
-      ]);
-
-      const origin =
-        request.nextUrl.origin ||
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        process.env.NEXT_PUBLIC_APP_URL;
-      const loginUrl = new URL("/affiliate/login", origin).toString();
-      const registerUrl = new URL("/affiliate/register", origin).toString();
-      const dashboardUrl = new URL("/dashboard", origin).toString();
+      const accessEntry = resolvePaidAccessEntry(whatsappConfig, {
+        id: updatedOrder.product_id,
+        title: product?.title || updatedOrder.product_name,
+      });
+      const accessContext = {
+        customerName: updatedOrder.buyer_name,
+        customerEmail: updatedOrder.buyer_email,
+        customerPhone: updatedOrder.buyer_whatsapp,
+        productName: product?.title || updatedOrder.product_name,
+        siteTitle: settings?.site_name || "AzkazamDigital",
+        orderCode: updatedOrder.order_code,
+        orderTotal: new Intl.NumberFormat("id-ID", {
+          style: "currency",
+          currency: "IDR",
+          maximumFractionDigits: 0,
+        }).format(Number(updatedOrder.total_amount || 0)),
+        loginEmail: updatedOrder.buyer_email,
+        loginPassword: authAccount.defaultPassword || "",
+        loginUrl,
+        dashboardUrl,
+        registerUrl,
+        affiliateCode: affiliate?.referral_code || "",
+        productDownloadUrl: product?.digital_file_url || "",
+        productDemoUrl: product?.demo_url || "",
+        productPurchaseUrl: product?.purchase_url || "",
+      };
+      paidAccessEmailMessage = accessEntry?.emailMessage
+        ? resolvePaidAccessTemplate(accessEntry.emailMessage, accessContext)
+        : accessEntry?.whatsappMessage
+        ? resolvePaidAccessTemplate(accessEntry.whatsappMessage, accessContext)
+        : "";
+      paidAccessEmailSubject = accessEntry?.emailSubject
+        ? resolvePaidAccessTemplate(accessEntry.emailSubject, accessContext)
+        : null;
+      paidAccessWhatsappMessage = accessEntry?.whatsappMessage
+        ? resolvePaidAccessTemplate(accessEntry.whatsappMessage, accessContext)
+        : accessEntry?.emailMessage
+        ? resolvePaidAccessTemplate(accessEntry.emailMessage, accessContext)
+        : "";
 
       try {
         const info = await sendPaidOrderEmail({
@@ -144,7 +254,9 @@ export async function POST(
           affiliateCode: affiliate?.referral_code || null,
           loginEmail: updatedOrder.buyer_email,
           defaultPassword: authAccount.defaultPassword,
+          accessSubject: paidAccessEmailSubject,
           accountCreatedAutomatically: authAccount.createdAutomatically,
+          accessMessage: paidAccessEmailMessage || null,
         });
 
         emailResult = {
@@ -160,33 +272,7 @@ export async function POST(
       }
     }
 
-    const [{ data: settings }, { data: product }] = await Promise.all([
-      serviceSupabase
-        .from("site_settings")
-        .select("site_name, whatsapp_number, social_links")
-        .limit(1)
-        .single(),
-      updatedOrder.product_id
-        ? serviceSupabase
-            .from("products")
-            .select("thumbnail_url")
-            .eq("id", updatedOrder.product_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
-
-    const whatsappConfig = getWhatsappNotificationConfig(
-      settings?.social_links as Record<string, unknown> | null,
-      settings?.whatsapp_number || null
-    );
-
     try {
-      const origin =
-        request.nextUrl.origin ||
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        process.env.NEXT_PUBLIC_APP_URL ||
-        "http://localhost:3000";
-
       const result = await sendOrderStatusWhatsappNotification({
         config: whatsappConfig,
         order: buildWhatsappOrderContext({
@@ -204,6 +290,8 @@ export async function POST(
           productImageUrl: product?.thumbnail_url || null,
         }),
         origin,
+        accessMessage:
+          updatedOrder.status === "paid" ? paidAccessWhatsappMessage : null,
       });
 
       whatsappResult = {
@@ -265,6 +353,7 @@ export async function POST(
       order: updatedOrder,
       email: emailResult,
       whatsapp: whatsappResult,
+      license: licenseResult,
     });
   } catch (error) {
     console.error("Admin order status route error:", error);
@@ -273,4 +362,50 @@ export async function POST(
       { status: 500 }
     );
   }
+}
+
+function normalizeLicenseRegistration(value: unknown): LicenseRegistrationPayload {
+  const row = isObject(value) ? value : {};
+  const productEntries = Array.isArray(row.productEntries)
+    ? row.productEntries
+        .map((item) => {
+          const productRow = isObject(item) ? item : {};
+          const productName = String(productRow.productName || "").trim();
+          if (!productName) {
+            return null;
+          }
+
+          return {
+            productName,
+            expiryDate: normalizeNullableString(productRow.expiryDate),
+            maxSessions: normalizeNullableNumber(productRow.maxSessions),
+          };
+        })
+        .filter((item) => item !== null)
+    : [];
+
+  return {
+    enabled: row.enabled !== false,
+    role: row.role === "admin" ? "admin" : "user",
+    allowedFeatures: Array.isArray(row.allowedFeatures)
+      ? row.allowedFeatures
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
+      : [],
+    productEntries,
+  };
+}
+
+function normalizeNullableString(value: unknown) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function normalizeNullableNumber(value: unknown) {
+  const nextValue = Number(value);
+  return Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

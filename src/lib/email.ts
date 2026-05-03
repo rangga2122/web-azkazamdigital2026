@@ -39,7 +39,9 @@ type PaidOrderEmailPayload = BaseEmailPayload & {
   affiliateCode: string | null;
   loginEmail: string;
   defaultPassword: string | null;
+  accessSubject?: string | null;
   accountCreatedAutomatically: boolean;
+  accessMessage?: string | null;
 };
 
 let transporterPromise: Promise<nodemailer.Transporter> | null = null;
@@ -82,6 +84,10 @@ function absoluteUrl(url: string | null) {
     "http://localhost:3000";
 
   return new URL(url, base).toString();
+}
+
+function formatMultilineHtml(value: string) {
+  return escapeHtml(value).replace(/\r?\n/g, "<br />");
 }
 
 function getContentType(fileName: string) {
@@ -351,6 +357,16 @@ export async function sendPaidOrderEmail(payload: PaidOrderEmailPayload) {
       </p>
     `;
 
+  const accessMessage = String(payload.accessMessage || "").trim();
+  const accessSection = accessMessage
+    ? `
+      <div style="margin:20px 0;padding:16px;border-radius:10px;background:#ecfeff;border:1px solid #a5f3fc;">
+        <h2 style="margin:0 0 12px;color:#0f766e;font-size:16px;">Akses Produk</h2>
+        <p style="margin:0;color:#0f172a;font-size:14px;line-height:1.7;">${formatMultilineHtml(accessMessage)}</p>
+      </div>
+    `
+    : "";
+
   const html = `
     <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
       <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:32px;">
@@ -369,6 +385,7 @@ export async function sendPaidOrderEmail(payload: PaidOrderEmailPayload) {
         </p>
         ${affiliateSection}
         ${loginSection}
+        ${accessSection}
         <div style="margin:24px 0 8px;">
           <a href="${payload.dashboardUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;margin-right:8px;">
             Buka Dashboard Afiliasi
@@ -415,6 +432,9 @@ export async function sendPaidOrderEmail(payload: PaidOrderEmailPayload) {
     payload.accountCreatedAutomatically && payload.defaultPassword
       ? `Password default: ${payload.defaultPassword}`
       : "Gunakan password akun Anda yang sudah ada.",
+    accessMessage ? "" : null,
+    accessMessage ? "Akses produk:" : null,
+    accessMessage || null,
     `Dashboard: ${payload.dashboardUrl}`,
     `Login: ${payload.loginUrl}`,
     !payload.accountCreatedAutomatically
@@ -428,7 +448,9 @@ export async function sendPaidOrderEmail(payload: PaidOrderEmailPayload) {
   return transporter.sendMail({
     from: `"${fromName}" <${fromEmail}>`,
     to: payload.buyerEmail,
-    subject: `Pembayaran diterima - ${payload.productName}`,
+    subject:
+      payload.accessSubject?.trim() ||
+      `Pembayaran diterima - ${payload.productName}`,
     text,
     html,
   });

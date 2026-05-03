@@ -13,6 +13,14 @@ export type WhatsappBroadcastStatus =
 
 export type WhatsappApiProvider = "gowa" | "instablast";
 
+export type PaidAccessEntry = {
+  productId: string;
+  productTitle: string;
+  whatsappMessage: string;
+  emailSubject: string;
+  emailMessage: string;
+};
+
 export type WhatsappDeviceInfo = {
   id: string;
   deviceId: string;
@@ -61,6 +69,7 @@ export type WhatsappNotificationConfig = {
   followup3Enabled: boolean;
   followupDelayHours3: number;
   followupTemplate3: string;
+  paidAccessEntries: PaidAccessEntry[];
 };
 
 export type WhatsappOrderContext = {
@@ -87,6 +96,25 @@ export type WhatsappBroadcastRecipientContext = {
   lastOrderDate: string;
   lastOrderTotal: string;
   siteTitle: string;
+};
+
+export type PaidAccessTemplateContext = {
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  productName: string;
+  siteTitle: string;
+  orderCode: string;
+  orderTotal: string;
+  loginEmail: string;
+  loginPassword: string;
+  loginUrl: string;
+  dashboardUrl: string;
+  registerUrl: string;
+  affiliateCode: string;
+  productDownloadUrl: string;
+  productDemoUrl: string;
+  productPurchaseUrl: string;
 };
 
 const DEFAULT_CUSTOMER_TEMPLATE =
@@ -148,6 +176,7 @@ const DEFAULT_CONFIG: WhatsappNotificationConfig = {
   followup3Enabled: false,
   followupDelayHours3: 72,
   followupTemplate3: DEFAULT_FOLLOWUP_TEMPLATE_3,
+  paidAccessEntries: [],
 };
 
 export function getWhatsappNotificationConfig(
@@ -256,6 +285,7 @@ export function getWhatsappNotificationConfig(
       raw.followupTemplate3,
       DEFAULT_CONFIG.followupTemplate3
     ),
+    paidAccessEntries: normalizePaidAccessEntries(raw.paidAccessEntries),
   };
 
   if (config.broadcastMinDelaySeconds > config.broadcastMaxDelaySeconds) {
@@ -321,6 +351,7 @@ export function serializeWhatsappNotificationConfig(
     followup3Enabled: config.followup3Enabled,
     followupDelayHours3: Math.max(1, Number(config.followupDelayHours3 || 1)),
     followupTemplate3: config.followupTemplate3,
+    paidAccessEntries: normalizePaidAccessEntries(config.paidAccessEntries),
   };
 }
 
@@ -367,6 +398,61 @@ export function resolveBroadcastTemplate(
     "{last_order_date}": context.lastOrderDate,
     "{last_order_total}": context.lastOrderTotal,
     "{site_title}": context.siteTitle,
+  });
+}
+
+export function resolvePaidAccessEntry(
+  config: Pick<WhatsappNotificationConfig, "paidAccessEntries">,
+  product: {
+    id?: string | null;
+    title?: string | null;
+  }
+) {
+  const productId = String(product.id || "").trim();
+  const productTitle = normalizePaidAccessLookup(product.title);
+
+  if (productId) {
+    const directMatch = config.paidAccessEntries.find(
+      (entry) => entry.productId === productId
+    );
+    if (directMatch) {
+      return directMatch;
+    }
+  }
+
+  if (!productTitle) {
+    return null;
+  }
+
+  return (
+    config.paidAccessEntries.find(
+      (entry) =>
+        normalizePaidAccessLookup(entry.productTitle) === productTitle
+    ) || null
+  );
+}
+
+export function resolvePaidAccessTemplate(
+  template: string,
+  context: PaidAccessTemplateContext
+) {
+  return resolveTemplateTokens(template, {
+    "{customer_name}": context.customerName,
+    "{customer_email}": context.customerEmail,
+    "{customer_phone}": context.customerPhone,
+    "{product_name}": context.productName,
+    "{site_title}": context.siteTitle,
+    "{order_id}": context.orderCode,
+    "{order_total}": context.orderTotal,
+    "{login_email}": context.loginEmail,
+    "{login_password}": context.loginPassword,
+    "{login_url}": context.loginUrl,
+    "{dashboard_url}": context.dashboardUrl,
+    "{register_url}": context.registerUrl,
+    "{affiliate_code}": context.affiliateCode,
+    "{product_download_url}": context.productDownloadUrl,
+    "{product_demo_url}": context.productDemoUrl,
+    "{product_purchase_url}": context.productPurchaseUrl,
   });
 }
 
@@ -572,6 +658,7 @@ export async function sendOrderStatusWhatsappNotification(args: {
   config: WhatsappNotificationConfig;
   order: WhatsappOrderContext;
   origin: string;
+  accessMessage?: string | null;
 }) {
   const { config, order } = args;
   if (!config.enabled || !config.notifyCustomerStatus) {
@@ -589,7 +676,9 @@ export async function sendOrderStatusWhatsappNotification(args: {
   );
   if (!receiver) return { customerSent: false };
 
-  const message = resolveWhatsappTemplate(config.statusTemplate, order);
+  const accessMessage = String(args.accessMessage || "").trim();
+  const statusMessage = resolveWhatsappTemplate(config.statusTemplate, order).trim();
+  const message = [statusMessage, accessMessage].filter(Boolean).join("\n\n");
   await sendWhatsappMessage(config, receiver, message);
 
   const imageUrl = pickNotificationImage(
@@ -836,6 +925,35 @@ function normalizeStatuses(
   return [...new Set(result)];
 }
 
+function normalizePaidAccessEntries(value: unknown): PaidAccessEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!isObject(item)) {
+        return null;
+      }
+
+      const productId = toString(item.productId, "").trim();
+      const productTitle = toString(item.productTitle, "").trim();
+
+      if (!productId || !productTitle) {
+        return null;
+      }
+
+      return {
+        productId,
+        productTitle,
+        whatsappMessage: toString(item.whatsappMessage, ""),
+        emailSubject: toString(item.emailSubject, ""),
+        emailMessage: toString(item.emailMessage, ""),
+      } satisfies PaidAccessEntry;
+    })
+    .filter((item): item is PaidAccessEntry => Boolean(item));
+}
+
 function toBoolean(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -887,6 +1005,13 @@ function normalizeWhatsappPhone(value: string, autoFormat: boolean) {
   }
 
   return digits;
+}
+
+function normalizePaidAccessLookup(value: string | null | undefined) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 async function loadRemoteMediaAsDataUrl(url: string, expectedMimePrefix: string) {

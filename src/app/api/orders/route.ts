@@ -1,4 +1,4 @@
-import { after, NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   createServerSupabaseClient,
   createServiceRoleClient,
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
       order.order_code
     );
 
-    after(async () => {
+    try {
       await runPostOrderSideEffects({
         origin,
         thankYouUrl,
@@ -290,14 +290,16 @@ export async function POST(request: NextRequest) {
           status: order.status,
         },
       });
-    });
+    } catch (error) {
+      console.error("Run post-order side effects error:", error);
+    }
 
     return NextResponse.json({
       success: true,
       order_code: order.order_code,
       total_amount: totalAmount,
       thank_you_url: thankYouUrl,
-      background_jobs: "scheduled",
+      background_jobs: "completed",
     });
   } catch (error) {
     console.error("Create order error:", error);
