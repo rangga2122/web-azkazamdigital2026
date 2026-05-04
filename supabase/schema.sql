@@ -144,7 +144,7 @@ create table public.products (
   description_html text not null default '',
   landing_page_mode text not null default 'default' check (landing_page_mode in ('default', 'custom_html')),
   landing_page_html text not null default '',
-  click_target_type text not null default 'checkout' check (click_target_type in ('cms_page', 'checkout')),
+  click_target_type text not null default 'checkout' check (click_target_type in ('cms_page', 'checkout', 'custom_url')),
   click_target_page_id uuid references public.pages(id) on delete set null,
   price numeric(14,2) not null default 0,
   affiliate_commission_rate numeric(5,2) not null default 30.00 check (affiliate_commission_rate >= 0 and affiliate_commission_rate <= 100),

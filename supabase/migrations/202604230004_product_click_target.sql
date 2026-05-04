@@ -7,7 +7,7 @@ alter table public.products
 
 alter table public.products
   add constraint products_click_target_type_check
-  check (click_target_type in ('cms_page', 'checkout'));
+  check (click_target_type in ('cms_page', 'checkout', 'custom_url'));
 
 create index if not exists products_click_target_page_id_idx
   on public.products(click_target_page_id);

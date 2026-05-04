@@ -127,7 +127,7 @@ export interface Product {
   description_html: string;
   landing_page_mode: 'default' | 'custom_html';
   landing_page_html: string;
-  click_target_type: 'cms_page' | 'checkout';
+  click_target_type: 'cms_page' | 'checkout' | 'custom_url';
   click_target_page_id: string | null;
   price: number;
   affiliate_commission_rate: number;

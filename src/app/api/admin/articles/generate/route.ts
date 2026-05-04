@@ -119,7 +119,7 @@ async function loadSelectedProducts(
     slug: string;
     thumbnail_url: string | null;
     short_description: string | null;
-    click_target_type: "cms_page" | "checkout";
+    click_target_type: "cms_page" | "checkout" | "custom_url";
     click_target_page?: { slug: string } | Array<{ slug: string }> | null;
   }>)
     .map((product) => {

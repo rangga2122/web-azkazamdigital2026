@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { sanitizePublicMediaUrl } from "@/lib/legacy-media";
+import { isAbsoluteUrl, resolveProductTargetHref } from "@/lib/product-targets";
 import { unstable_cache } from "next/cache";
 import {
   FaArrowRight,
@@ -318,6 +319,7 @@ function HomeProductCard({
   ratingLabel: string;
 }) {
   const productHref = resolveProductTargetHref(product);
+  const isExternalTarget = isAbsoluteUrl(productHref);
   const thumbnailUrl = sanitizePublicMediaUrl(product.thumbnail_url);
 
   return (
@@ -328,25 +330,47 @@ function HomeProductCard({
         </span>
       )}
 
-      <Link href={productHref} className="block">
-        <div className="h-36 overflow-hidden bg-[#eef7ff] sm:h-52">
-          {thumbnailUrl ? (
-            <img
-              src={thumbnailUrl}
-              alt={product.title}
-              className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#e9f8ff,#ffffff)]">
-              <span className="text-4xl font-bold text-[#0066cc]/35">
-                {product.title.charAt(0)}
-              </span>
-            </div>
-          )}
-        </div>
-      </Link>
+      {isExternalTarget ? (
+        <a href={productHref} className="block">
+          <div className="h-36 overflow-hidden bg-[#eef7ff] sm:h-52">
+            {thumbnailUrl ? (
+              <img
+                src={thumbnailUrl}
+                alt={product.title}
+                className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#e9f8ff,#ffffff)]">
+                <span className="text-4xl font-bold text-[#0066cc]/35">
+                  {product.title.charAt(0)}
+                </span>
+              </div>
+            )}
+          </div>
+        </a>
+      ) : (
+        <Link href={productHref} className="block">
+          <div className="h-36 overflow-hidden bg-[#eef7ff] sm:h-52">
+            {thumbnailUrl ? (
+              <img
+                src={thumbnailUrl}
+                alt={product.title}
+                className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#e9f8ff,#ffffff)]">
+                <span className="text-4xl font-bold text-[#0066cc]/35">
+                  {product.title.charAt(0)}
+                </span>
+              </div>
+            )}
+          </div>
+        </Link>
+      )}
 
       <div className="p-4 sm:p-6">
         <h3 className="line-clamp-2 min-h-[2.7rem] text-sm font-bold leading-snug text-[#1a1a2e] transition group-hover:text-[#0066cc] sm:text-lg">
@@ -374,28 +398,22 @@ function HomeProductCard({
           </span>
         </div>
 
-        <Link
-          href={productHref}
-          className="mt-5 block rounded-full bg-[#0066cc] px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-900/10 transition hover:scale-[1.03] hover:bg-red-500 sm:text-sm"
-        >
-          {buttonLabel}
-        </Link>
+        {isExternalTarget ? (
+          <a
+            href={productHref}
+            className="mt-5 block rounded-full bg-[#0066cc] px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-900/10 transition hover:scale-[1.03] hover:bg-red-500 sm:text-sm"
+          >
+            {buttonLabel}
+          </a>
+        ) : (
+          <Link
+            href={productHref}
+            className="mt-5 block rounded-full bg-[#0066cc] px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-900/10 transition hover:scale-[1.03] hover:bg-red-500 sm:text-sm"
+          >
+            {buttonLabel}
+          </Link>
+        )}
       </div>
     </article>
   );
-}
-
-function resolveProductTargetHref(product: Product) {
-  if (
-    product.click_target_type === "cms_page" &&
-    product.click_target_page?.slug
-  ) {
-    return `/${product.click_target_page.slug}`;
-  }
-
-  if (product.click_target_type === "checkout") {
-    return `/order/${product.slug}`;
-  }
-
-  return `/produk/${product.slug}`;
 }

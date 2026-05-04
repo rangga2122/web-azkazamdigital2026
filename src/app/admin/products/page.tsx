@@ -11,6 +11,12 @@ import {
 } from "@/lib/admin-collections";
 import { copyTextToClipboard } from "@/lib/client-clipboard";
 import { getProductSyncKeyword } from "@/lib/license-product-sync";
+import {
+  isAbsoluteUrl,
+  isValidCustomTargetUrl,
+  normalizeCustomTargetUrl,
+  resolveProductTargetHref,
+} from "@/lib/product-targets";
 import { createClient } from "@/lib/supabase/client";
 import { formatPrice, getProductCommissionLabel } from "@/lib/utils";
 import { FaCopy, FaExternalLinkAlt, FaImage, FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaEye } from "react-icons/fa";
@@ -89,10 +95,20 @@ export default function AdminProductsPage() {
       toast.error("Pilih landing page CMS untuk tujuan produk.");
       return;
     }
+    if (form.click_target_type === "custom_url" && !form.checkout_url.trim()) {
+      toast.error("Isi Custom Link untuk tujuan produk.");
+      return;
+    }
+    if (form.click_target_type === "custom_url" && !isValidCustomTargetUrl(form.checkout_url)) {
+      toast.error("Custom Link harus berupa URL domain yang valid.");
+      return;
+    }
     const supabase = createClient();
     const previousTargetPath = editing ? resolveProductTargetPathForProduct(editing) : "";
+    const normalizedCheckoutUrl = normalizeCustomTargetUrl(form.checkout_url);
     const payload = {
       ...form,
+      checkout_url: normalizedCheckoutUrl || null,
       click_target_page_id:
         form.click_target_type === "cms_page" && form.click_target_page_id
           ? form.click_target_page_id
@@ -119,7 +135,13 @@ export default function AdminProductsPage() {
       tags: ["public-pages"],
       paths: compactPaths([
         previousTargetPath,
-        resolvePreviewTargetPath(payload.click_target_type, payload.click_target_page_id, pages, payload.slug),
+        resolvePreviewTargetPath(
+          payload.click_target_type,
+          payload.click_target_page_id,
+          pages,
+          payload.slug,
+          payload.checkout_url
+        ),
         `/produk/${payload.slug}`,
         `/order/${payload.slug}`,
       ]),
@@ -173,19 +195,17 @@ export default function AdminProductsPage() {
   }
 
   function resolveProductTargetPath() {
-    if (form.click_target_type === "cms_page" && selectedTargetPage?.slug) {
-      return `/${selectedTargetPage.slug}`;
-    }
-
-    return productPath("checkout", form.slug);
+    return resolvePreviewTargetPath(
+      form.click_target_type,
+      form.click_target_page_id,
+      pages,
+      form.slug,
+      form.checkout_url
+    );
   }
 
   function resolveProductTargetPathForProduct(product: Product) {
-    if (product.click_target_type === "cms_page" && product.click_target_page?.slug) {
-      return `/${product.click_target_page.slug}`;
-    }
-
-    return productPath("checkout", product.slug);
+    return resolveProductTargetHref(product);
   }
 
   async function copyAbsolutePath(path: string, message: string) {
@@ -194,7 +214,9 @@ export default function AdminProductsPage() {
       return;
     }
 
-    const url = `${window.location.origin}${path}`;
+    const url = isAbsoluteUrl(path)
+      ? path
+      : `${window.location.origin}${path}`;
     try {
       await copyTextToClipboard(url);
       toast.success(message);
@@ -311,13 +333,14 @@ export default function AdminProductsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div>
               <label className="block text-sm font-medium text-dark-300 mb-2">Tujuan Tombol Lihat Produk</label>
-              <select value={form.click_target_type} onChange={(e) => setForm({...form, click_target_type: e.target.value as Product["click_target_type"], click_target_page_id: e.target.value === "checkout" ? "" : form.click_target_page_id})} className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50">
+              <select value={form.click_target_type} onChange={(e) => setForm({...form, click_target_type: e.target.value as Product["click_target_type"], click_target_page_id: e.target.value === "cms_page" ? form.click_target_page_id : ""})} className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50">
                 <option value="checkout">Langsung ke Checkout Form</option>
                 <option value="cms_page">Landing Page CMS</option>
+                <option value="custom_url">Custom Link</option>
               </select>
             </div>
             <div className="lg:col-span-2 rounded-xl bg-dark-800 border border-dark-700 p-4 text-sm text-dark-400">
-              Ketika user klik produk, sistem akan langsung menuju landing page CMS yang dipilih atau ke checkout form. Route /produk/{form.slug || "slug-produk"} akan otomatis mengikuti target ini.
+              Ketika user klik produk, sistem akan langsung menuju checkout, landing page CMS, atau custom domain yang Anda isi. Route /produk/{form.slug || "slug-produk"} akan otomatis mengikuti target ini.
             </div>
           </div>
           {form.click_target_type === "cms_page" && (
@@ -348,6 +371,23 @@ export default function AdminProductsPage() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+          {form.click_target_type === "custom_url" && (
+            <div className="rounded-xl bg-dark-800 border border-dark-700 p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-dark-300 mb-2">Custom Link</label>
+                <input
+                  type="text"
+                  value={form.checkout_url}
+                  onChange={(e) => setForm({...form, checkout_url: e.target.value})}
+                  className="w-full px-4 py-3 rounded-xl bg-dark-900 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50"
+                  placeholder="https://domainlain.com/landing-produk"
+                />
+              </div>
+              <div className="rounded-lg bg-dark-900 border border-dark-700 px-4 py-3 text-xs text-dark-400">
+                Gunakan URL lengkap domain lain. Saat user klik produk, sistem akan langsung membuka link ini tanpa memakai landing page internal.
+              </div>
             </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-5 gap-5">
@@ -458,8 +498,8 @@ export default function AdminProductsPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-dark-300 mb-2">Link Checkout Eksternal (opsional)</label>
-            <input type="text" value={form.checkout_url} onChange={(e) => setForm({...form, checkout_url: e.target.value})} className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50" placeholder="Kosongkan agar tombol beli memakai /order/slug dan komisi otomatis." />
+            <label className="block text-sm font-medium text-dark-300 mb-2">Link Checkout Eksternal / Custom Link (opsional)</label>
+            <input type="text" value={form.checkout_url} onChange={(e) => setForm({...form, checkout_url: e.target.value})} className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50" placeholder="Contoh: https://domainlain.com/checkout atau kosongkan agar pakai /order/slug." />
           </div>
           {/* Categories */}
           <div>
@@ -551,7 +591,13 @@ export default function AdminProductsPage() {
                     </td>
                     <td className="py-3 px-4 text-white font-semibold">{formatPrice(p.price)}</td>
                     <td className="py-3 px-4 text-dark-300">{getProductCommissionLabel(p)}</td>
-                    <td className="py-3 px-4 text-dark-300">{p.click_target_type === "cms_page" ? (p.click_target_page?.title || "CMS") : "Checkout"}</td>
+                    <td className="py-3 px-4 text-dark-300">
+                      {p.click_target_type === "cms_page"
+                        ? (p.click_target_page?.title || "CMS")
+                        : p.click_target_type === "custom_url"
+                        ? "Custom Link"
+                        : "Checkout"}
+                    </td>
                     <td className="py-3 px-4"><span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${p.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}`}>{p.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
                     <td className="py-3 px-4 text-dark-400">{p.is_featured ? 'Ya' : '-'}</td>
                     <td className="py-3 px-4">
@@ -579,15 +625,23 @@ export default function AdminProductsPage() {
 }
 
 function compactPaths(paths: string[]) {
-  return paths.filter(Boolean);
+  return paths.filter((path) => path && !isAbsoluteUrl(path));
 }
 
 function resolvePreviewTargetPath(
   clickTargetType: Product["click_target_type"],
   clickTargetPageId: string | null,
   pages: Page[],
-  slug: string
+  slug: string,
+  checkoutUrl: string | null
 ) {
+  if (clickTargetType === "custom_url") {
+    const customUrl = normalizeCustomTargetUrl(checkoutUrl);
+    if (isValidCustomTargetUrl(customUrl)) {
+      return customUrl;
+    }
+  }
+
   if (clickTargetType === "cms_page" && clickTargetPageId) {
     const page = pages.find((item) => item.id === clickTargetPageId);
     if (page?.slug) {
