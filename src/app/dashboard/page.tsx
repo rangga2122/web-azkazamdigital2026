@@ -14,6 +14,7 @@ import {
   FaLink,
   FaMoneyBillWave,
   FaPercent,
+  FaPlayCircle,
   FaRegUserCircle,
   FaSignOutAlt,
   FaTachometerAlt,
@@ -42,6 +43,7 @@ type DashboardSection =
   | "overview"
   | "products"
   | "affiliate"
+  | "tutorial"
   | "commissions"
   | "transactions"
   | "profile";
@@ -54,10 +56,14 @@ const menuItems: Array<{
   { id: "overview", label: "Overview", icon: FaTachometerAlt },
   { id: "products", label: "Produk Saya", icon: FaBoxOpen },
   { id: "affiliate", label: "Afiliasi Saya", icon: FaLink },
+  { id: "tutorial", label: "Tutorial Menu Afiliasi", icon: FaPlayCircle },
   { id: "commissions", label: "Komisi", icon: FaMoneyBillWave },
   { id: "transactions", label: "Riwayat Transaksi", icon: FaExchangeAlt },
   { id: "profile", label: "Pengaturan Profil", icon: FaRegUserCircle },
 ];
+
+const AFFILIATE_TUTORIAL_URL = "https://youtu.be/TG-FZ0yj3V8";
+const AFFILIATE_TUTORIAL_EMBED_URL = "https://www.youtube.com/embed/TG-FZ0yj3V8";
 
 export default function UserDashboardPage() {
   const router = useRouter();
@@ -68,6 +74,7 @@ export default function UserDashboardPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [affiliate, setAffiliate] = useState<Affiliate | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [affiliateTransactions, setAffiliateTransactions] = useState<Order[]>([]);
   const [productsById, setProductsById] = useState<Record<string, Product>>({});
   const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLink[]>([]);
   const [landingPagesByProductId, setLandingPagesByProductId] = useState<
@@ -107,11 +114,13 @@ export default function UserDashboardPage() {
       { data: orderRows },
       { data: affiliateRow },
       licenseSyncResponse,
+      affiliateOrdersResponse,
     ] = await Promise.all([
         supabase.from("users_profiles").select("*").eq("id", user.id).maybeSingle(),
         supabase.from("orders").select("*").order("created_at", { ascending: false }),
         supabase.from("affiliates").select("*").maybeSingle(),
         fetch("/api/dashboard/license-products", { cache: "no-store" }).catch(() => null),
+        fetch("/api/dashboard/affiliate-orders", { cache: "no-store" }).catch(() => null),
       ]);
 
     const typedOrders = (orderRows || []) as Order[];
@@ -276,6 +285,15 @@ export default function UserDashboardPage() {
       setLicensedProductIds(licensePayload.data?.licensedProductIds || []);
     } else {
       setLicensedProductIds([]);
+    }
+
+    if (affiliateOrdersResponse?.ok) {
+      const affiliateOrdersPayload = (await affiliateOrdersResponse.json()) as {
+        data?: { orders?: Order[] };
+      };
+      setAffiliateTransactions(affiliateOrdersPayload.data?.orders || []);
+    } else {
+      setAffiliateTransactions([]);
     }
 
     if (affiliatePayload) {
@@ -1016,14 +1034,55 @@ export default function UserDashboardPage() {
             </section>
           )}
 
+          {activeSection === "tutorial" && (
+            <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">
+                    Tutorial Menu Afiliasi
+                  </h2>
+                  <p className="mt-1 max-w-2xl text-sm text-dark-400">
+                    Video panduan ini menjelaskan cara menggunakan menu afiliasi,
+                    membagikan link produk, dan memahami alur dashboard affiliate.
+                  </p>
+                </div>
+                <a
+                  href={AFFILIATE_TUTORIAL_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300 transition hover:bg-red-500/20"
+                >
+                  <FaPlayCircle size={14} />
+                  Buka di YouTube
+                </a>
+              </div>
+
+              <div className="mt-5 overflow-hidden rounded-2xl border border-dark-700 bg-dark-950 shadow-[0_18px_40px_rgba(15,23,42,0.35)]">
+                <div className="aspect-video w-full">
+                  <iframe
+                    src={AFFILIATE_TUTORIAL_EMBED_URL}
+                    title="Tutorial Menu Afiliasi"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                    className="h-full w-full"
+                  />
+                </div>
+              </div>
+            </section>
+          )}
+
           {activeSection === "transactions" && (
             <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
               <h2 className="text-lg font-semibold text-white">Riwayat Transaksi</h2>
+              <p className="mt-1 text-sm text-dark-400">
+                Menampilkan nama pembeli dan produk dari transaksi yang masuk lewat link affiliate Anda.
+              </p>
               <div className="mt-5 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-dark-800 text-left text-dark-400">
-                      <th className="px-2 py-3">Kode</th>
+                      <th className="px-2 py-3">Nama Pembeli</th>
                       <th className="px-2 py-3">Produk</th>
                       <th className="px-2 py-3">Total</th>
                       <th className="px-2 py-3">Status</th>
@@ -1031,17 +1090,17 @@ export default function UserDashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {orders.length === 0 ? (
+                    {affiliateTransactions.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="px-2 py-8 text-center text-dark-400">
                           Belum ada transaksi.
                         </td>
                       </tr>
                     ) : (
-                      orders.map((order) => (
+                      affiliateTransactions.map((order) => (
                         <tr key={order.id} className="border-b border-dark-800/80">
-                          <td className="px-2 py-3 font-mono text-xs text-primary-300">
-                            {order.order_code}
+                          <td className="px-2 py-3 font-medium text-white">
+                            {order.buyer_name}
                           </td>
                           <td className="px-2 py-3 text-dark-300">
                             {order.product_name}
