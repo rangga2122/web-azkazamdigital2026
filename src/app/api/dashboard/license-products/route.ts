@@ -17,29 +17,9 @@ export async function GET() {
     const serviceSupabase = await createServiceRoleClient();
     const normalizedEmail = user.email.trim().toLowerCase();
 
-    const [{ data: userOrders }, { data: emailOrders }, licenseUsers] = await Promise.all([
-      serviceSupabase
-        .from("orders")
-        .select("product_id")
-        .eq("status", "paid")
-        .eq("user_id", user.id),
-      serviceSupabase
-        .from("orders")
-        .select("product_id")
-        .eq("status", "paid")
-        .ilike("buyer_email", normalizedEmail),
-      loadActiveLicenseUsersByEmail(normalizedEmail),
-    ]);
+    const licenseUsers = await loadActiveLicenseUsersByEmail(normalizedEmail);
 
-    const purchasedProductIds = Array.from(
-      new Set(
-        [...(userOrders || []), ...(emailOrders || [])]
-          .map((order) => order.product_id)
-          .filter(Boolean)
-      )
-    ) as string[];
-
-    if (purchasedProductIds.length === 0 || licenseUsers.length === 0) {
+    if (licenseUsers.length === 0) {
       return NextResponse.json({
         success: true,
         data: { licensedProductIds: [] as string[] },
@@ -49,7 +29,7 @@ export async function GET() {
     const { data: catalogProducts, error: catalogError } = await serviceSupabase
       .from("products")
       .select("id, title, slug, badge, is_active")
-      .in("id", purchasedProductIds);
+      .eq("is_active", true);
 
     if (catalogError) {
       throw catalogError;

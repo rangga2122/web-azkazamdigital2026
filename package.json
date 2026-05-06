@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "archive:unused-media": "node scripts/archive-unused-media.js",
+    "backfill:license-affiliates": "npx tsx scripts/backfill-active-license-affiliates.ts",
     "cleanup:legacy-page-assets": "node scripts/cleanup-legacy-page-assets.js",
     "dev": "next dev",
     "build": "next build --webpack",

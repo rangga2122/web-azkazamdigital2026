@@ -946,15 +946,20 @@ export default function UserDashboardPage() {
                   }
                   placeholder="/uploads/general/avatar.jpg"
                 />
-                <Field
-                  label="Password Baru"
-                  type="password"
-                  value={profileForm.password}
-                  onChange={(value) =>
-                    setProfileForm((current) => ({ ...current, password: value }))
-                  }
-                  placeholder="Kosongkan jika tidak diubah"
-                />
+                <div>
+                  <Field
+                    label="Password Baru"
+                    type="password"
+                    value={profileForm.password}
+                    onChange={(value) =>
+                      setProfileForm((current) => ({ ...current, password: value }))
+                    }
+                    placeholder="Kosongkan jika tidak diubah"
+                  />
+                  <p className="mt-2 text-xs text-amber-300">
+                    Demi keamanan, segera ganti password default Anda setelah berhasil login.
+                  </p>
+                </div>
                 <Field
                   label="Metode Pencairan"
                   value={profileForm.payout_method}

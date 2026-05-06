@@ -1,8 +1,12 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
-
-export const DEFAULT_AFFILIATE_LOGIN_PASSWORD = "azkazamdigital123";
+import { DEFAULT_AFFILIATE_LOGIN_PASSWORD } from "@/lib/affiliate-password";
 
 type ServiceSupabase = Awaited<ReturnType<typeof createServiceRoleClient>>;
+type ExistingAuthUser = {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
+} | null;
 
 export async function findAuthUserByEmail(
   supabase: ServiceSupabase,
@@ -33,15 +37,20 @@ export async function ensureAffiliateAuthAccount({
   supabase,
   email,
   fullName,
+  existingUser,
 }: {
   supabase: ServiceSupabase;
   email: string;
   fullName: string;
+  existingUser?: ExistingAuthUser;
 }) {
   const normalizedEmail = email.trim().toLowerCase();
-  const existingUser = await findAuthUserByEmail(supabase, normalizedEmail);
+  const resolvedExistingUser =
+    existingUser?.email?.toLowerCase() === normalizedEmail
+      ? existingUser
+      : await findAuthUserByEmail(supabase, normalizedEmail);
 
-  let userId = existingUser?.id || null;
+  let userId = resolvedExistingUser?.id || null;
   let createdAutomatically = false;
 
   if (!userId) {
@@ -61,6 +70,14 @@ export async function ensureAffiliateAuthAccount({
 
     userId = authData.user.id;
     createdAutomatically = true;
+  } else {
+    await supabase.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        ...(resolvedExistingUser?.user_metadata || {}),
+        full_name: fullName,
+        role: "affiliate",
+      },
+    });
   }
 
   await supabase

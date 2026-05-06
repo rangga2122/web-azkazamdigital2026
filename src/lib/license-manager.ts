@@ -3,6 +3,7 @@ import "server-only";
 import fs from "fs";
 import path from "path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { provisionAffiliateAccessForLicensedEmail } from "@/lib/license-affiliate-access";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { enrichLicenseProductsWithCatalogMatches } from "@/lib/license-product-sync";
 import type {
@@ -99,10 +100,36 @@ export async function loadActiveLicenseUsersByEmail(email: string) {
     throw error;
   }
 
-  return ((data || []) as LicenseUser[]).filter((user) => {
-    if (!user.expiry_date) return true;
-    return new Date(user.expiry_date) >= new Date(new Date().toDateString());
-  });
+  return ((data || []) as LicenseUser[]).filter(isCurrentlyActiveLicenseUser);
+}
+
+export async function loadAllActiveLicenseUsersGroupedByEmail() {
+  const client = createLicenseManagerClient();
+  if (!client) {
+    return new Map<string, LicenseUser[]>();
+  }
+
+  const { data, error } = await client
+    .from("users")
+    .select("*")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  const grouped = new Map<string, LicenseUser[]>();
+  for (const user of ((data || []) as LicenseUser[]).filter(isCurrentlyActiveLicenseUser)) {
+    const normalizedEmail = String(user.email || "").trim().toLowerCase();
+    if (!normalizedEmail) continue;
+
+    const currentRows = grouped.get(normalizedEmail) || [];
+    currentRows.push(user);
+    grouped.set(normalizedEmail, currentRows);
+  }
+
+  return grouped;
 }
 
 export async function addLicenseUsers(input: {
@@ -169,6 +196,14 @@ export async function addLicenseUsers(input: {
     });
   }
 
+  const activeLicenseUsers = await loadActiveLicenseUsersByEmail(input.email);
+  if (activeLicenseUsers.length > 0) {
+    await provisionAffiliateAccessForLicensedEmail({
+      email: input.email,
+      licenseUsers: activeLicenseUsers,
+    });
+  }
+
   return {
     results,
     data: await loadLicenseBootstrap(),
@@ -203,8 +238,29 @@ export async function updateLicenseUser(input: {
   const { error } = await client.from("users").update(patch).eq("id", input.id);
   if (error) throw error;
 
+  const { data: updatedUser, error: updatedUserError } = await client
+    .from("users")
+    .select("email")
+    .eq("id", input.id)
+    .maybeSingle();
+
+  if (updatedUserError) {
+    throw updatedUserError;
+  }
+
   if (input.isActive === false) {
     await kickAllLicenseSessions(input.id);
+  }
+
+  const normalizedEmail = String(updatedUser?.email || "").trim().toLowerCase();
+  if (normalizedEmail) {
+    const activeLicenseUsers = await loadActiveLicenseUsersByEmail(normalizedEmail);
+    if (activeLicenseUsers.length > 0) {
+      await provisionAffiliateAccessForLicensedEmail({
+        email: normalizedEmail,
+        licenseUsers: activeLicenseUsers,
+      });
+    }
   }
 
   return loadLicenseBootstrap();
@@ -504,4 +560,10 @@ async function loadSessions(client: SupabaseClient) {
   }
 
   return (data || []) as LicenseSession[];
+}
+
+function isCurrentlyActiveLicenseUser(user: LicenseUser) {
+  if (!user.is_active) return false;
+  if (!user.expiry_date) return true;
+  return new Date(user.expiry_date) >= new Date(new Date().toDateString());
 }

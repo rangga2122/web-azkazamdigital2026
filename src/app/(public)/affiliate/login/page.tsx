@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { DEFAULT_AFFILIATE_LOGIN_PASSWORD } from "@/lib/affiliate-password";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
@@ -88,6 +89,13 @@ export default function AffiliateLoginPage() {
               className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50"
               placeholder="password"
             />
+            <p className="mt-2 text-xs text-dark-400">
+              Untuk akun member yang dibuat otomatis, gunakan password default{" "}
+              <span className="font-semibold text-accent-300">
+                {DEFAULT_AFFILIATE_LOGIN_PASSWORD}
+              </span>
+              . Setelah berhasil login, segera ubah password di menu Pengaturan Profil.
+            </p>
           </div>
 
           <button
