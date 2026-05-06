@@ -7,11 +7,13 @@ import toast from "react-hot-toast";
 import {
   FaBoxOpen,
   FaChartLine,
+  FaCoins,
   FaCopy,
   FaExchangeAlt,
   FaExternalLinkAlt,
   FaLink,
   FaMoneyBillWave,
+  FaPercent,
   FaRegUserCircle,
   FaSignOutAlt,
   FaTachometerAlt,
@@ -75,6 +77,7 @@ export default function UserDashboardPage() {
   const [clickCount, setClickCount] = useState(0);
   const [conversionCount, setConversionCount] = useState(0);
   const [licensedProductIds, setLicensedProductIds] = useState<string[]>([]);
+  const [selectedAffiliateProductKey, setSelectedAffiliateProductKey] = useState("");
   const [profileForm, setProfileForm] = useState({
     full_name: "",
     referral_code: "",
@@ -113,76 +116,91 @@ export default function UserDashboardPage() {
 
     const typedOrders = (orderRows || []) as Order[];
     const paidOrders = typedOrders.filter((order) => order.status === "paid");
-    const productIds = Array.from(
+    const orderedProductIds = Array.from(
       new Set(paidOrders.map((order) => order.product_id).filter(Boolean))
     ) as string[];
 
-    const [{ data: productRows }, { data: linkedPageRows }, affiliatePayload] = await Promise.all([
-      productIds.length > 0
-        ? supabase.from("products").select("*").in("id", productIds)
+    const affiliatePayload = affiliateRow?.id
+      ? await Promise.all([
+          supabase
+            .from("affiliate_links")
+            .select(`
+              *,
+              product:products (
+                id,
+                title,
+                slug,
+                thumbnail_url,
+                price,
+                affiliate_commission_rate,
+                affiliate_commission_type,
+                affiliate_commission_amount,
+                click_target_type,
+                digital_file_url,
+                purchase_url,
+                demo_url,
+                is_active,
+                compare_at_price,
+                banner_url,
+                short_description,
+                description_html,
+                landing_page_mode,
+                landing_page_html,
+                click_target_page_id,
+                is_featured,
+                checkout_url,
+                badge,
+                seo_title,
+                seo_description,
+                created_at,
+                updated_at
+              )
+            `)
+            .eq("affiliate_id", affiliateRow.id)
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("commissions")
+            .select("*")
+            .eq("affiliate_id", affiliateRow.id)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("affiliate_clicks")
+            .select("id", { count: "exact", head: true })
+            .eq("affiliate_id", affiliateRow.id),
+          supabase
+            .from("affiliate_conversions")
+            .select("id", { count: "exact", head: true })
+            .eq("affiliate_id", affiliateRow.id),
+        ])
+      : null;
+
+    const affiliateLinkRows = affiliatePayload
+      ? ((affiliatePayload[0].data || []) as AffiliateLink[])
+      : [];
+    const affiliateLinkedProductIds = Array.from(
+      new Set(
+        affiliateLinkRows
+          .flatMap((link) => [link.product_id, link.product?.id])
+          .filter(Boolean)
+      )
+    ) as string[];
+    const relatedProductIds = Array.from(
+      new Set([...orderedProductIds, ...affiliateLinkedProductIds])
+    );
+
+    const [{ data: productRows }, { data: linkedPageRows }] = await Promise.all([
+      relatedProductIds.length > 0
+        ? supabase.from("products").select("*").in("id", relatedProductIds)
         : Promise.resolve({ data: [] as Product[] }),
-      productIds.length > 0
+      relatedProductIds.length > 0
         ? supabase
             .from("pages")
             .select("id, title, slug, status, product_id, hide_header_footer, seo_title, seo_description, featured_image, sort_order, is_system, content_html, created_at, updated_at")
             .eq("status", "published")
-            .in("product_id", productIds)
+            .in("product_id", relatedProductIds)
             .order("sort_order", { ascending: true })
             .order("title", { ascending: true })
         : Promise.resolve({ data: [] as Page[] }),
-      affiliateRow?.id
-        ? Promise.all([
-            supabase
-              .from("affiliate_links")
-              .select(`
-                *,
-                product:products (
-                  id,
-                  title,
-                  slug,
-                  thumbnail_url,
-                  price,
-                  affiliate_commission_rate,
-                  affiliate_commission_type,
-                  affiliate_commission_amount,
-                  click_target_type,
-                  digital_file_url,
-                  purchase_url,
-                  demo_url,
-                  is_active,
-                  compare_at_price,
-                  banner_url,
-                  short_description,
-                  description_html,
-                  landing_page_mode,
-                  landing_page_html,
-                  click_target_page_id,
-                  is_featured,
-                  checkout_url,
-                  badge,
-                  seo_title,
-                  seo_description,
-                  created_at,
-                  updated_at
-                )
-              `)
-              .eq("affiliate_id", affiliateRow.id)
-              .order("created_at", { ascending: true }),
-            supabase
-              .from("commissions")
-              .select("*")
-              .eq("affiliate_id", affiliateRow.id)
-              .order("created_at", { ascending: false }),
-            supabase
-              .from("affiliate_clicks")
-              .select("id", { count: "exact", head: true })
-              .eq("affiliate_id", affiliateRow.id),
-            supabase
-              .from("affiliate_conversions")
-              .select("id", { count: "exact", head: true })
-              .eq("affiliate_id", affiliateRow.id),
-          ])
-        : Promise.resolve(null),
     ]);
 
     const mappedProducts = Object.fromEntries(
@@ -190,7 +208,7 @@ export default function UserDashboardPage() {
     );
     const clickTargetPageIds = Array.from(
       new Set(
-        ((productRows || []) as Product[])
+        [...((productRows || []) as Product[]), ...affiliateLinkRows.map((link) => link.product).filter(Boolean) as Product[]]
           .map((item) => item.click_target_page_id)
           .filter(Boolean)
       )
@@ -263,7 +281,16 @@ export default function UserDashboardPage() {
     if (affiliatePayload) {
       const [linksResult, commissionsResult, clicksResult, conversionsResult] =
         affiliatePayload;
-      setAffiliateLinks((linksResult.data || []) as AffiliateLink[]);
+      const normalizedAffiliateLinks = ((linksResult.data || []) as AffiliateLink[]).map(
+        (link) => ({
+          ...link,
+          product:
+            (link.product_id ? mappedProducts[link.product_id] || null : null) ||
+            link.product ||
+            null,
+        })
+      );
+      setAffiliateLinks(normalizedAffiliateLinks);
       setCommissions((commissionsResult.data || []) as Commission[]);
       setClickCount(clicksResult.count || 0);
       setConversionCount(conversionsResult.count || 0);
@@ -330,6 +357,9 @@ export default function UserDashboardPage() {
         link,
         product: link.product || (link.product_id ? productsById[link.product_id] || null : null),
         landingPages: link.product_id ? landingPagesByProductId[link.product_id] || [] : [],
+        commissionPreview: getAffiliateCommissionPreview(
+          link.product || (link.product_id ? productsById[link.product_id] || null : null)
+        ),
       })),
     [affiliateLinks, landingPagesByProductId, productsById]
   );
@@ -345,6 +375,41 @@ export default function UserDashboardPage() {
       ),
     [affiliateProducts, licensedProductIdSet]
   );
+
+  const affiliateProductOptions = useMemo(
+    () =>
+      licensedAffiliateProducts.map((item, index) => ({
+        key: getAffiliateProductEntryKey(item.link, item.product, index),
+        label: item.product?.title || `Produk ${index + 1}`,
+      })),
+    [licensedAffiliateProducts]
+  );
+
+  const resolvedSelectedAffiliateProductKey = useMemo(() => {
+    if (affiliateProductOptions.length === 0) {
+      return "";
+    }
+
+    return affiliateProductOptions.some(
+      (item) => item.key === selectedAffiliateProductKey
+    )
+      ? selectedAffiliateProductKey
+      : affiliateProductOptions[0].key;
+  }, [affiliateProductOptions, selectedAffiliateProductKey]);
+
+  const selectedAffiliateProduct = useMemo(() => {
+    if (!resolvedSelectedAffiliateProductKey) {
+      return null;
+    }
+
+    return (
+      licensedAffiliateProducts.find(
+        (item, index) =>
+          getAffiliateProductEntryKey(item.link, item.product, index) ===
+          resolvedSelectedAffiliateProductKey
+      ) || licensedAffiliateProducts[0]
+    );
+  }, [licensedAffiliateProducts, resolvedSelectedAffiliateProductKey]);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -679,127 +744,223 @@ export default function UserDashboardPage() {
           )}
 
           {activeSection === "affiliate" && (
-            <section className="rounded-2xl border border-dark-800 bg-dark-900 p-6">
-              <h2 className="text-lg font-semibold text-white">Afiliasi Saya</h2>
-              <p className="mt-1 text-sm text-dark-400">
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-black">Afiliasi Saya</h2>
+              <p className="mt-1 text-sm text-slate-600">
                 Hanya produk dengan lisensi aktif yang boleh dijual dari dashboard ini.
               </p>
               <div className="mt-5 space-y-4">
                 {licensedAffiliateProducts.length === 0 ? (
-                  <div className="rounded-xl border border-dark-800 bg-dark-800 px-4 py-10 text-center text-dark-400">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-slate-500">
                     Tidak ada produk yang lolos lisensi aktif untuk dijual.
                   </div>
                 ) : (
-                  licensedAffiliateProducts.map(({ link, product, landingPages }) => (
+                  <>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-semibold text-black">
+                          Pilih Produk Affiliate
+                        </span>
+                        <select
+                          value={resolvedSelectedAffiliateProductKey}
+                          onChange={(event) =>
+                            setSelectedAffiliateProductKey(event.target.value)
+                          }
+                          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-black outline-none transition focus:border-slate-500"
+                        >
+                          {affiliateProductOptions.map((item) => (
+                            <option key={item.key} value={item.key}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    {selectedAffiliateProduct ? (
+                      (() => {
+                        const { link, product, landingPages, commissionPreview } =
+                          selectedAffiliateProduct;
+                        return (
                     <div
                       key={link.id}
-                      className="rounded-xl border border-dark-800 bg-dark-800 p-4"
+                      className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_16px_38px_rgba(15,23,42,0.12)]"
                     >
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                          <div className="text-base font-semibold text-white">
-                            {product?.title || "Produk"}
-                          </div>
-                          <div className="mt-1 text-sm text-dark-400">
-                            Komisi {getProductCommissionLabel(product || {})}
-                          </div>
-                        </div>
-                        <div className="flex gap-3 text-xs text-dark-400">
-                          <span>{link.clicks_count} klik</span>
-                          <span>{link.conversions_count} konversi</span>
-                        </div>
-                      </div>
-                      <div className="mt-4 flex flex-col gap-2 lg:flex-row">
-                        <code className="min-w-0 flex-1 truncate rounded-lg border border-dark-700 bg-dark-900 px-3 py-2 text-xs text-primary-300">
-                          {link.target_url}
-                        </code>
-                        <button
-                          onClick={() => copyLink(link.target_url)}
-                          className="flex items-center justify-center gap-2 rounded-lg border border-primary-500/30 bg-primary-500/10 px-3 py-2 text-sm text-primary-300"
-                        >
-                          <FaCopy size={12} />
-                          Copy Link Produk
-                        </button>
-                        {product?.slug && (
-                          <Link
-                            href={link.target_url}
-                            className="flex items-center justify-center gap-2 rounded-lg border border-dark-700 px-3 py-2 text-sm text-dark-200 transition-colors hover:text-white"
-                          >
-                            <FaExternalLinkAlt size={12} />
-                            Buka
-                          </Link>
-                        )}
-                      </div>
-
-                      <div className="mt-5 rounded-xl border border-dark-700 bg-dark-900/70 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold text-white">
-                              Landing Page Produk
+                      <div className="grid gap-4 p-4 xl:grid-cols-[110px_minmax(0,1fr)]">
+                        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+                          {resolveAffiliateProductImage(product) ? (
+                            <img
+                              src={resolveAffiliateProductImage(product) || ""}
+                              alt={product?.title || "Produk"}
+                              className="h-32 w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-32 items-center justify-center bg-[linear-gradient(135deg,#e2e8f0,#cbd5e1)] text-3xl font-black text-slate-700">
+                              {(product?.title || "P").charAt(0)}
                             </div>
-                            <div className="mt-1 text-xs text-dark-400">
-                              Muncul semua halaman published yang ditautkan ke produk ini.
+                          )}
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-white via-white/90 to-transparent p-2">
+                            <div className="inline-flex rounded-full border border-slate-300 bg-white/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
+                              {product?.badge?.trim() || "Produk Afiliasi"}
                             </div>
                           </div>
-                          <div className="text-xs text-dark-500">
-                            {landingPages.length} halaman
-                          </div>
                         </div>
 
-                        {landingPages.length === 0 ? (
-                          <div className="mt-4 rounded-lg border border-dashed border-dark-700 px-3 py-4 text-sm text-dark-400">
-                            Belum ada landing page yang ditautkan ke produk ini.
+                        <div className="min-w-0">
+                          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                            <div className="min-w-0">
+                              <div className="text-lg font-bold leading-6 text-black">
+                                {product?.title || "Produk"}
+                              </div>
+                              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                                {product?.short_description?.trim() ||
+                                  "Bagikan link produk ini untuk menghasilkan komisi dari setiap order yang masuk melalui referral Anda."}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-xs">
+                              <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 font-medium text-black">
+                                {link.clicks_count} klik
+                              </span>
+                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-medium text-black">
+                                {link.conversions_count} konversi
+                              </span>
+                            </div>
                           </div>
-                        ) : (
-                          <div className="mt-4 space-y-3">
-                            {landingPages.map((page) => {
-                              const landingPath = buildLandingPageAffiliatePath(
-                                page,
-                                link.referral_code
-                              );
 
-                              return (
-                                <div
-                                  key={page.id}
-                                  className="rounded-lg border border-dark-800 bg-dark-950/70 p-3"
+                          <div className="mt-5 grid gap-3 md:grid-cols-3">
+                            <DashboardMetricCard
+                              icon={<FaPercent size={14} />}
+                              label="Komisi Affiliate"
+                              value={commissionPreview.label}
+                              note={
+                                commissionPreview.type === "percent"
+                                  ? `${commissionPreview.rate}% dari harga produk`
+                                  : "Komisi tetap setiap order berhasil"
+                              }
+                              accent="primary"
+                            />
+                            <DashboardMetricCard
+                              icon={<FaCoins size={14} />}
+                              label="Estimasi Komisi / Order"
+                              value={commissionPreview.estimateLabel}
+                              note={commissionPreview.formulaLabel}
+                              accent="emerald"
+                            />
+                            <DashboardMetricCard
+                              icon={<FaMoneyBillWave size={14} />}
+                              label="Harga Produk"
+                              value={commissionPreview.priceLabel}
+                              note={
+                                commissionPreview.comparePriceLabel
+                                  ? `Harga coret ${commissionPreview.comparePriceLabel}`
+                                  : "Dasar perhitungan komisi saat ini"
+                              }
+                              accent="amber"
+                            />
+                          </div>
+
+                          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-black">
+                              Link Affiliate Produk
+                            </div>
+                            <div className="flex flex-col gap-3 xl:flex-row">
+                              <code className="min-w-0 flex-1 truncate rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-black">
+                                {link.target_url}
+                              </code>
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <button
+                                  onClick={() => copyLink(link.target_url)}
+                                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-black transition hover:bg-slate-100"
                                 >
-                                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                    <div className="min-w-0">
-                                      <div className="truncate text-sm font-semibold text-white">
-                                        {page.title}
-                                      </div>
-                                      <div className="mt-1 truncate text-xs text-dark-400">
-                                        /{page.slug}
-                                      </div>
-                                    </div>
-                                    <div className="flex flex-col gap-2 lg:flex-row">
-                                      <code className="min-w-0 rounded-lg border border-dark-700 bg-dark-900 px-3 py-2 text-xs text-accent-300 lg:min-w-[320px]">
-                                        {landingPath}
-                                      </code>
-                                      <button
-                                        onClick={() => copyLink(landingPath)}
-                                        className="flex items-center justify-center gap-2 rounded-lg border border-accent-500/30 bg-accent-500/10 px-3 py-2 text-sm text-accent-300"
-                                      >
-                                        <FaCopy size={12} />
-                                        Copy LP
-                                      </button>
-                                      <Link
-                                        href={landingPath}
-                                        className="flex items-center justify-center gap-2 rounded-lg border border-dark-700 px-3 py-2 text-sm text-dark-200 transition-colors hover:text-white"
-                                      >
-                                        <FaExternalLinkAlt size={12} />
-                                        Buka LP
-                                      </Link>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                                  <FaCopy size={12} />
+                                  Copy Link Produk
+                                </button>
+                                {product?.slug && (
+                                  <Link
+                                    href={link.target_url}
+                                    className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-black transition-colors hover:bg-slate-100"
+                                  >
+                                    <FaExternalLinkAlt size={12} />
+                                    Buka
+                                  </Link>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        )}
+
+                          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <div className="text-sm font-semibold text-black">
+                                  Landing Page Produk
+                                </div>
+                                <div className="mt-1 text-xs text-slate-600">
+                                  Gunakan landing page ini jika ingin promosi dengan halaman yang lebih spesifik.
+                                </div>
+                              </div>
+                              <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-black">
+                                {landingPages.length} halaman
+                              </div>
+                            </div>
+
+                            {landingPages.length === 0 ? (
+                              <div className="mt-4 rounded-xl border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
+                                Belum ada landing page yang ditautkan ke produk ini.
+                              </div>
+                            ) : (
+                              <div className="mt-4 space-y-3">
+                                {landingPages.map((page) => {
+                                  const landingPath = buildLandingPageAffiliatePath(
+                                    page,
+                                    link.referral_code
+                                  );
+
+                                  return (
+                                    <div
+                                      key={page.id}
+                                      className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                                    >
+                                      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                                        <div className="min-w-0">
+                                          <div className="truncate text-sm font-semibold text-black">
+                                            {page.title}
+                                          </div>
+                                          <div className="mt-1 truncate text-xs text-slate-600">
+                                            /{page.slug}
+                                          </div>
+                                        </div>
+                                        <div className="flex flex-col gap-2 xl:flex-row">
+                                          <code className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-black xl:min-w-[320px]">
+                                            {landingPath}
+                                          </code>
+                                          <button
+                                            onClick={() => copyLink(landingPath)}
+                                            className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-black"
+                                          >
+                                            <FaCopy size={12} />
+                                            Copy LP
+                                          </button>
+                                          <Link
+                                            href={landingPath}
+                                            className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-black transition-colors hover:bg-slate-100"
+                                          >
+                                            <FaExternalLinkAlt size={12} />
+                                            Buka LP
+                                          </Link>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  ))
+                        );
+                      })()
+                    ) : null}
+                  </>
                 )}
               </div>
             </section>
@@ -1038,5 +1199,84 @@ function Field({
         className="w-full rounded-xl border border-dark-700 bg-dark-800 px-4 py-3 text-white outline-none transition focus:border-primary-500/50 disabled:cursor-not-allowed disabled:opacity-70"
       />
     </label>
+  );
+}
+
+function getAffiliateCommissionPreview(product: Partial<Product> | null | undefined) {
+  const type = product?.affiliate_commission_type === "fixed" ? "fixed" : "percent";
+  const rate = Number(product?.affiliate_commission_rate || 0);
+  const price = Number(product?.price || 0);
+  const fixedAmount = Number(product?.affiliate_commission_amount || 0);
+  const comparePrice = Number(product?.compare_at_price || 0);
+  const estimate = type === "fixed" ? fixedAmount : (price * rate) / 100;
+
+  return {
+    type,
+    rate,
+    estimate,
+    label: getProductCommissionLabel(product || {}),
+    estimateLabel: formatPrice(estimate),
+    priceLabel: price > 0 ? formatPrice(price) : "Harga belum diatur",
+    comparePriceLabel: comparePrice > 0 ? formatPrice(comparePrice) : null,
+    formulaLabel:
+      type === "fixed"
+        ? "Nominal komisi tetap setiap order"
+        : price > 0
+        ? `${rate}% x ${formatPrice(price)}`
+        : `${rate}% dari harga produk`,
+  };
+}
+
+function resolveAffiliateProductImage(product: Partial<Product> | null | undefined) {
+  const banner = product?.banner_url?.trim();
+  if (banner) return banner;
+
+  const thumbnail = product?.thumbnail_url?.trim();
+  if (thumbnail) return thumbnail;
+
+  return null;
+}
+
+function getAffiliateProductEntryKey(
+  link: AffiliateLink,
+  product: Partial<Product> | null | undefined,
+  index: number
+) {
+  return product?.id || link.product_id || link.id || `affiliate-product-${index}`;
+}
+
+function DashboardMetricCard({
+  icon,
+  label,
+  value,
+  note,
+  accent,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  note: string;
+  accent: "primary" | "emerald" | "amber";
+}) {
+  const theme = {
+    primary:
+      "border-sky-200 bg-sky-50 text-black shadow-[0_12px_30px_rgba(14,165,233,0.08)]",
+    emerald:
+      "border-emerald-200 bg-emerald-50 text-black shadow-[0_12px_30px_rgba(16,185,129,0.08)]",
+    amber:
+      "border-amber-200 bg-amber-50 text-black shadow-[0_12px_30px_rgba(245,158,11,0.08)]",
+  }[accent];
+
+  return (
+    <div className={`rounded-2xl border p-4 ${theme}`}>
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black shadow-sm">
+          {icon}
+        </span>
+        {label}
+      </div>
+      <div className="mt-4 text-xl font-black text-black">{value}</div>
+      <div className="mt-2 text-xs leading-5 text-slate-600">{note}</div>
+    </div>
   );
 }

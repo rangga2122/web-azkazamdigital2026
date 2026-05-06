@@ -205,7 +205,22 @@ export interface AffiliateLink {
   conversions_count: number;
   created_at: string;
   updated_at: string;
-  product?: Pick<Product, "id" | "title" | "slug" | "thumbnail_url" | "price" | "affiliate_commission_rate" | "click_target_type"> | null;
+  product?: Pick<
+    Product,
+    | "id"
+    | "title"
+    | "slug"
+    | "thumbnail_url"
+    | "banner_url"
+    | "price"
+    | "compare_at_price"
+    | "affiliate_commission_rate"
+    | "affiliate_commission_type"
+    | "affiliate_commission_amount"
+    | "click_target_type"
+    | "short_description"
+    | "badge"
+  > | null;
 }
 
 export interface AffiliateClick {
