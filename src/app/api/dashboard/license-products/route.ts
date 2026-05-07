@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { provisionAffiliateAccessForLicensedEmail } from "@/lib/license-affiliate-access";
 import { resolveLicensedCatalogProductIds } from "@/lib/license-product-sync";
 import { loadActiveLicenseUsersByEmail } from "@/lib/license-manager";
 import { createServiceRoleClient, createServerSupabaseClient } from "@/lib/supabase/server";
@@ -34,6 +35,19 @@ export async function GET() {
     if (catalogError) {
       throw catalogError;
     }
+
+    await provisionAffiliateAccessForLicensedEmail({
+      email: normalizedEmail,
+      licenseUsers,
+      supabase: serviceSupabase,
+      catalogProducts: (catalogProducts || []) as Array<{
+        id: string;
+        title: string;
+        slug: string;
+        badge: string | null;
+        is_active: boolean;
+      }>,
+    });
 
     const licensedProductIds = resolveLicensedCatalogProductIds(
       licenseUsers,
