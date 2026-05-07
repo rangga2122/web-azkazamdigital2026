@@ -6,10 +6,16 @@ import {
 } from "@/lib/affiliate-auth";
 import { DEFAULT_AFFILIATE_LOGIN_PASSWORD } from "@/lib/affiliate-password";
 import {
-  findCatalogProductForLicenseName,
+  findMatchedCatalogProductForLicenseName,
+  loadCatalogProducts,
+  loadLicenseProductsWithCatalogMatches,
 } from "@/lib/license-product-sync";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import type { LicenseCatalogProduct, LicenseUser } from "@/types/license-manager";
+import type {
+  LicenseCatalogProduct,
+  LicenseProduct,
+  LicenseUser,
+} from "@/types/license-manager";
 
 type ServiceSupabase = Awaited<ReturnType<typeof createServiceRoleClient>>;
 
@@ -70,12 +76,14 @@ export async function provisionAffiliateAccessForLicensedEmail({
   licenseUsers,
   supabase,
   catalogProducts,
+  licenseProducts,
   existingAuthUser,
 }: {
   email: string;
   licenseUsers: LicenseUser[];
   supabase?: ServiceSupabase;
   catalogProducts?: LicenseCatalogProduct[];
+  licenseProducts?: LicenseProduct[];
   existingAuthUser?: AuthUserLookup;
 }): Promise<ProvisionLicenseAffiliateAccessResult | null> {
   const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -93,7 +101,13 @@ export async function provisionAffiliateAccessForLicensedEmail({
       ? existingAuthUser
       : await findAuthUserByEmail(serviceSupabase, normalizedEmail);
 
-  const [{ data: existingAffiliate }, latestPaidOrder, latestAnyOrder, resolvedCatalogProducts] =
+  const [
+    { data: existingAffiliate },
+    latestPaidOrder,
+    latestAnyOrder,
+    resolvedCatalogProducts,
+    resolvedLicenseProducts,
+  ] =
     await Promise.all([
       serviceSupabase
         .from("affiliates")
@@ -104,7 +118,12 @@ export async function provisionAffiliateAccessForLicensedEmail({
         .maybeSingle(),
       loadLatestOrderByEmail(serviceSupabase, normalizedEmail, true),
       loadLatestOrderByEmail(serviceSupabase, normalizedEmail, false),
-      catalogProducts ? Promise.resolve(catalogProducts) : loadAffiliateCatalogProducts(serviceSupabase),
+      catalogProducts
+        ? Promise.resolve(catalogProducts)
+        : loadCatalogProducts(),
+      licenseProducts
+        ? Promise.resolve(licenseProducts)
+        : loadLicenseProductsWithCatalogMatches(),
     ]);
 
   const fullName = resolveAffiliateFullName(
@@ -178,7 +197,11 @@ export async function provisionAffiliateAccessForLicensedEmail({
 
   const matchedProducts = activeLicenseUsers
     .map((licenseUser) =>
-      findCatalogProductForLicenseName(licenseUser.product_name, resolvedCatalogProducts)
+      findMatchedCatalogProductForLicenseName(
+        licenseUser.product_name,
+        resolvedLicenseProducts,
+        resolvedCatalogProducts
+      )
     )
     .filter((product): product is LicenseCatalogProduct => Boolean(product));
 
@@ -191,7 +214,11 @@ export async function provisionAffiliateAccessForLicensedEmail({
       activeLicenseUsers
         .filter(
           (licenseUser) =>
-            !findCatalogProductForLicenseName(licenseUser.product_name, resolvedCatalogProducts)
+            !findMatchedCatalogProductForLicenseName(
+              licenseUser.product_name,
+              resolvedLicenseProducts,
+              resolvedCatalogProducts
+            )
         )
         .map((licenseUser) => String(licenseUser.product_name || "").trim())
         .filter(Boolean)

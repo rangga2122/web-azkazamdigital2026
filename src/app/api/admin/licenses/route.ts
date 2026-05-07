@@ -121,6 +121,7 @@ async function handleAction(action: string, payload: Record<string, unknown>) {
           description: normalizeNullableString(payload.description),
           defaultFeatures: normalizeStringArray(payload.defaultFeatures),
           defaultExpiryDays: normalizeNullableNumber(payload.defaultExpiryDays),
+          matchedCatalogProductId: normalizeNullableString(payload.matchedCatalogProductId),
         }),
       };
     case "update-product":
@@ -140,6 +141,10 @@ async function handleAction(action: string, payload: Record<string, unknown>) {
             payload.defaultExpiryDays === undefined
               ? undefined
               : normalizeNullableNumber(payload.defaultExpiryDays),
+          matchedCatalogProductId:
+            payload.matchedCatalogProductId === undefined
+              ? undefined
+              : normalizeNullableString(payload.matchedCatalogProductId),
           isActive:
             payload.isActive === undefined ? undefined : Boolean(payload.isActive),
         }),

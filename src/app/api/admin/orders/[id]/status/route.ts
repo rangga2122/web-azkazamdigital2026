@@ -109,7 +109,8 @@ export async function POST(
     let licenseResult: {
       skipped?: boolean;
       created?: number;
-      duplicate?: number;
+      extended?: number;
+      reactivated?: number;
       failed?: number;
       error?: string;
     } = {
@@ -167,7 +168,8 @@ export async function POST(
           licenseResult = {
             skipped: false,
             created: results.filter((item) => item.status === "success").length,
-            duplicate: results.filter((item) => item.status === "duplicate").length,
+            extended: results.filter((item) => item.status === "extended").length,
+            reactivated: results.filter((item) => item.status === "reactivated").length,
             failed: results.filter((item) => item.status === "error").length,
           };
         } catch (error) {

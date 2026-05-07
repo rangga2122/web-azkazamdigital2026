@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { provisionAffiliateAccessForLicensedEmail } from "@/lib/license-affiliate-access";
-import { resolveLicensedCatalogProductIds } from "@/lib/license-product-sync";
+import {
+  loadCatalogProducts,
+  loadLicenseProductsWithCatalogMatches,
+  resolveLicensedCatalogProductIdsFromMappings,
+} from "@/lib/license-product-sync";
 import { loadActiveLicenseUsersByEmail } from "@/lib/license-manager";
 import { createServiceRoleClient, createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -27,37 +31,22 @@ export async function GET() {
       });
     }
 
-    const { data: catalogProducts, error: catalogError } = await serviceSupabase
-      .from("products")
-      .select("id, title, slug, badge, is_active")
-      .eq("is_active", true);
-
-    if (catalogError) {
-      throw catalogError;
-    }
+    const [catalogProducts, licenseProducts] = await Promise.all([
+      loadCatalogProducts(),
+      loadLicenseProductsWithCatalogMatches(),
+    ]);
 
     await provisionAffiliateAccessForLicensedEmail({
       email: normalizedEmail,
       licenseUsers,
       supabase: serviceSupabase,
-      catalogProducts: (catalogProducts || []) as Array<{
-        id: string;
-        title: string;
-        slug: string;
-        badge: string | null;
-        is_active: boolean;
-      }>,
+      catalogProducts,
+      licenseProducts,
     });
 
-    const licensedProductIds = resolveLicensedCatalogProductIds(
+    const licensedProductIds = resolveLicensedCatalogProductIdsFromMappings(
       licenseUsers,
-      (catalogProducts || []) as Array<{
-        id: string;
-        title: string;
-        slug: string;
-        badge: string | null;
-        is_active: boolean;
-      }>
+      licenseProducts
     );
 
     return NextResponse.json({

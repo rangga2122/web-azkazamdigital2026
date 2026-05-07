@@ -221,6 +221,15 @@ create table public.affiliate_links (
   updated_at timestamptz not null default now()
 );
 
+create table public.license_product_catalog_syncs (
+  id uuid primary key default gen_random_uuid(),
+  license_product_id bigint not null unique,
+  license_product_name text not null,
+  catalog_product_id uuid references public.products(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table public.affiliate_clicks (
   id uuid primary key default gen_random_uuid(),
   affiliate_id uuid references public.affiliates(id) on delete set null,
@@ -328,6 +337,8 @@ create index affiliates_referral_code_idx on public.affiliates(referral_code);
 create index affiliate_clicks_referral_idx on public.affiliate_clicks(referral_code, created_at desc);
 create unique index affiliate_links_affiliate_product_uidx on public.affiliate_links(affiliate_id, product_id) where product_id is not null;
 create index affiliate_links_referral_product_idx on public.affiliate_links(referral_code, product_id);
+create unique index license_product_catalog_syncs_license_product_uidx on public.license_product_catalog_syncs(license_product_id);
+create index license_product_catalog_syncs_catalog_product_idx on public.license_product_catalog_syncs(catalog_product_id);
 create index coupon_codes_code_idx on public.coupon_codes(code);
 
 create trigger users_profiles_updated_at before update on public.users_profiles for each row execute function public.set_updated_at();
@@ -342,6 +353,7 @@ create trigger testimonials_updated_at before update on public.testimonials for 
 create trigger faqs_updated_at before update on public.faqs for each row execute function public.set_updated_at();
 create trigger affiliates_updated_at before update on public.affiliates for each row execute function public.set_updated_at();
 create trigger affiliate_links_updated_at before update on public.affiliate_links for each row execute function public.set_updated_at();
+create trigger license_product_catalog_syncs_updated_at before update on public.license_product_catalog_syncs for each row execute function public.set_updated_at();
 create trigger affiliate_links_sync_from_affiliates after insert or update of referral_code on public.affiliates for each row execute function public.handle_affiliate_link_sync_on_affiliate();
 create trigger affiliate_links_sync_from_products after insert or update of slug, is_active on public.products for each row execute function public.handle_affiliate_link_sync_on_product();
 create trigger orders_updated_at before update on public.orders for each row execute function public.set_updated_at();
@@ -362,6 +374,7 @@ alter table public.testimonials enable row level security;
 alter table public.faqs enable row level security;
 alter table public.affiliates enable row level security;
 alter table public.affiliate_links enable row level security;
+alter table public.license_product_catalog_syncs enable row level security;
 alter table public.affiliate_clicks enable row level security;
 alter table public.orders enable row level security;
 alter table public.sales enable row level security;
@@ -514,6 +527,7 @@ create policy "admins full access faqs" on public.faqs for all using (public.cur
 create policy "admins full access business data" on public.orders for all using (public.current_user_is_admin()) with check (public.current_user_is_admin());
 create policy "admins full access affiliates" on public.affiliates for all using (public.current_user_is_admin()) with check (public.current_user_is_admin());
 create policy "admins full access affiliate links" on public.affiliate_links for all using (public.current_user_is_admin()) with check (public.current_user_is_admin());
+create policy "admins full access license product catalog syncs" on public.license_product_catalog_syncs for all using (public.current_user_is_admin()) with check (public.current_user_is_admin());
 create policy "admins full access clicks" on public.affiliate_clicks for all using (public.current_user_is_admin()) with check (public.current_user_is_admin());
 create policy "admins full access conversions" on public.affiliate_conversions for all using (public.current_user_is_admin()) with check (public.current_user_is_admin());
 create policy "admins full access commissions" on public.commissions for all using (public.current_user_is_admin()) with check (public.current_user_is_admin());

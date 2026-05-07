@@ -26,7 +26,11 @@ export type LicenseProduct = {
   matched_catalog_product_id?: string | null;
   matched_catalog_product_title?: string | null;
   matched_catalog_product_slug?: string | null;
-  sync_keyword?: string | null;
+};
+
+export type LicenseProductCatalogSync = {
+  license_product_id: number;
+  catalog_product_id: string | null;
 };
 
 export type LicenseCatalogProduct = {
@@ -87,3 +91,9 @@ export type LicenseBootstrap = {
   notifications: LicenseNotification[];
   orderLeads: LicenseOrderLead[];
 };
+
+export type LicenseProvisionResultStatus =
+  | "success"
+  | "extended"
+  | "reactivated"
+  | "error";

@@ -101,7 +101,8 @@ export default function AdminOrdersPage() {
         error?: string;
         skipped?: boolean;
         created?: number;
-        duplicate?: number;
+        extended?: number;
+        reactivated?: number;
         failed?: number;
       };
     };
@@ -117,10 +118,12 @@ export default function AdminOrdersPage() {
         notices.push(`Registrasi lisensi gagal: ${payload.license.error}`);
       } else {
         const created = Number(payload.license.created || 0);
-        const duplicate = Number(payload.license.duplicate || 0);
+        const extended = Number(payload.license.extended || 0);
+        const reactivated = Number(payload.license.reactivated || 0);
         const failed = Number(payload.license.failed || 0);
         if (created > 0) notices.push(`Lisensi dibuat ${created}`);
-        if (duplicate > 0) notices.push(`Lisensi duplikat ${duplicate}`);
+        if (extended > 0) notices.push(`Lisensi diperpanjang ${extended}`);
+        if (reactivated > 0) notices.push(`Lisensi diaktifkan lagi ${reactivated}`);
         if (failed > 0) notices.push(`Lisensi gagal ${failed}`);
       }
     }
@@ -401,7 +404,7 @@ function MarkPaidModal({
         </div>
         <div className="space-y-5 p-5">
           <div className="rounded-xl border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-primary-100">
-            Saat status diubah ke <strong>Dibayar</strong>, sistem bisa langsung membuat akses lisensi untuk produk yang dibeli dan mengirim akses lewat email/WhatsApp.
+            Saat status diubah ke <strong>Dibayar</strong>, sistem bisa langsung membuat akses lisensi untuk produk yang dibeli dan mengirim akses lewat email/WhatsApp. Jika email yang sama sudah punya produk itu, masa aktif akan diperpanjang otomatis. Jika sudah kadaluarsa, lisensi akan aktif lagi mulai hari ini.
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -547,9 +550,7 @@ function MarkPaidModal({
 function buildProductEntries(products: LicenseProduct[], order: Order) {
   const matchedProductName =
     products.find(
-      (product) =>
-        product.matched_catalog_product_id === order.product_id ||
-        normalizeText(product.name) === normalizeText(order.product_name)
+      (product) => product.matched_catalog_product_id === order.product_id
     )?.name || "";
 
   return products.map((product) => ({
@@ -573,12 +574,4 @@ function splitFeatures(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function normalizeText(value: string | null | undefined) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ");
 }

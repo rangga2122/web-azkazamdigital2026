@@ -3,8 +3,8 @@ import path from "path";
 import { loadEnvConfig } from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 import { DEFAULT_AFFILIATE_LOGIN_PASSWORD } from "../src/lib/affiliate-password";
-import { findCatalogProductForLicenseName } from "../src/lib/license-product-sync";
-import type { LicenseCatalogProduct, LicenseUser } from "../src/types/license-manager";
+import { loadLicenseProductsWithCatalogMatches } from "../src/lib/license-product-sync";
+import type { LicenseCatalogProduct, LicenseProduct, LicenseUser } from "../src/types/license-manager";
 
 type MainSupabase = ReturnType<typeof createMainSupabaseClient>;
 type LicenseSupabase = ReturnType<typeof createLicenseSupabaseClient>;
@@ -38,9 +38,10 @@ async function main() {
 
   const mainSupabase = createMainSupabaseClient();
   const licenseSupabase = createLicenseSupabaseClient();
-  const [groupedLicenseUsers, catalogProducts, authUsersByEmail] = await Promise.all([
+  const [groupedLicenseUsers, catalogProducts, licenseProducts, authUsersByEmail] = await Promise.all([
     loadAllActiveLicenseUsersGroupedByEmail(licenseSupabase),
     loadAffiliateCatalogProducts(mainSupabase),
+    loadLicenseProductsWithCatalogMatches(),
     loadAuthUsersByEmail(mainSupabase),
   ]);
 
@@ -67,6 +68,7 @@ async function main() {
         email,
         licenseUsers,
         catalogProducts,
+        licenseProducts,
         existingAuthUser: authUsersByEmail.get(email) || null,
       });
 
@@ -246,12 +248,14 @@ async function provisionAffiliateAccessForLicensedEmail({
   email,
   licenseUsers,
   catalogProducts,
+  licenseProducts,
   existingAuthUser,
 }: {
   mainSupabase: MainSupabase;
   email: string;
   licenseUsers: LicenseUser[];
   catalogProducts: LicenseCatalogProduct[];
+  licenseProducts: LicenseProduct[];
   existingAuthUser: AuthUserRow | null;
 }) {
   const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -347,7 +351,15 @@ async function provisionAffiliateAccessForLicensedEmail({
 
   const matchedProducts = activeLicenseUsers
     .map((licenseUser) =>
-      findCatalogProductForLicenseName(licenseUser.product_name, catalogProducts)
+      catalogProducts.find(
+        (catalogProduct) =>
+          catalogProduct.id ===
+          licenseProducts.find(
+            (licenseProduct) =>
+              String(licenseProduct.name || "").trim().toLowerCase() ===
+              String(licenseUser.product_name || "").trim().toLowerCase()
+          )?.matched_catalog_product_id
+      ) || null
     )
     .filter((product): product is LicenseCatalogProduct => Boolean(product));
   const matchedProductMap = new Map(
@@ -359,7 +371,12 @@ async function provisionAffiliateAccessForLicensedEmail({
       activeLicenseUsers
         .filter(
           (licenseUser) =>
-            !findCatalogProductForLicenseName(licenseUser.product_name, catalogProducts)
+            !licenseProducts.find(
+              (licenseProduct) =>
+                String(licenseProduct.name || "").trim().toLowerCase() ===
+                  String(licenseUser.product_name || "").trim().toLowerCase() &&
+                Boolean(licenseProduct.matched_catalog_product_id)
+            )
         )
         .map((licenseUser) => String(licenseUser.product_name || "").trim())
         .filter(Boolean)

@@ -25,6 +25,7 @@ import type {
   LicenseNotification,
   LicenseOrderLead,
   LicenseProduct,
+  LicenseProvisionResultStatus,
   LicenseSession,
   LicenseUser,
 } from "@/types/license-manager";
@@ -182,7 +183,10 @@ export default function AdminLicensesPage() {
           | LicenseBootstrap
           | {
               data?: LicenseBootstrap;
-              results?: Array<{ productName: string; status: string }>;
+              results?: Array<{
+                productName: string;
+                status: LicenseProvisionResultStatus;
+              }>;
             };
       };
 
@@ -781,8 +785,7 @@ export default function AdminLicensesPage() {
           {!loading && activeTab === "products" ? (
             <div className="space-y-5">
               <div className="rounded-xl border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-primary-100">
-                Sinkronisasi produk lisensi sekarang otomatis membaca nama produk web dari
-                menu Produk memakai slug, judul, dan keyword nama yang dinormalisasi.
+                Sinkronisasi produk lisensi sekarang diatur manual. Saat membuat atau edit produk lisensi, pilih langsung produk web aktif yang menjadi pasangannya.
               </div>
               <div className="flex justify-end">
                 <button
@@ -820,11 +823,6 @@ export default function AdminLicensesPage() {
                         <span className="rounded-full border border-dark-700 px-3 py-1">
                           {(product.default_features || []).length} fitur
                         </span>
-                        {product.sync_keyword ? (
-                          <span className="rounded-full border border-primary-500/30 bg-primary-500/10 px-3 py-1 text-primary-300">
-                            keyword: {product.sync_keyword}
-                          </span>
-                        ) : null}
                       </div>
                       <div className="mt-4 rounded-xl border border-dark-700 bg-dark-900/60 px-4 py-3 text-sm">
                         {product.matched_catalog_product_slug ? (
@@ -841,7 +839,7 @@ export default function AdminLicensesPage() {
                           <>
                             <div className="text-dark-400">Produk web sinkron</div>
                             <div className="mt-1 text-amber-300">
-                              Belum ketemu pasangan di menu Produk.
+                              Belum dipilih pasangan produk web.
                             </div>
                           </>
                         )}
@@ -1083,8 +1081,9 @@ export default function AdminLicensesPage() {
       ) : null}
 
       {modal.type === "product" ? (
-        <ProductModal
+                        <ProductModal
           product={modal.product}
+          catalogProducts={data.catalogProducts.filter((product) => product.is_active)}
           submitting={submitting}
           onClose={() => setModal({ type: "none" })}
           onSubmit={async (payload) => {
@@ -1343,7 +1342,7 @@ function AddUsersModal({
     <BaseModal title={title} onClose={onClose}>
       <div className="space-y-5">
         <div className="rounded-xl border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-primary-100">
-          Pilih satu atau lebih produk. Setiap produk bisa diatur masa aktif dan max sesi secara terpisah.
+          Pilih satu atau lebih produk. Setiap produk bisa diatur masa aktif dan max sesi secara terpisah. Jika email ini sudah punya produk yang sama, lisensi akan diperpanjang otomatis atau diaktifkan lagi jika sudah kadaluarsa.
         </div>
         {!hideEmailField ? (
           <Field label="Email">
@@ -1492,11 +1491,13 @@ function EditUserModal({
 
 function ProductModal({
   product,
+  catalogProducts,
   submitting,
   onClose,
   onSubmit,
 }: {
   product: LicenseProduct | null;
+  catalogProducts: LicenseBootstrap["catalogProducts"];
   submitting: boolean;
   onClose: () => void;
   onSubmit: (payload: Record<string, unknown>) => Promise<void>;
@@ -1507,6 +1508,9 @@ function ProductModal({
     product?.default_expiry_days ? String(product.default_expiry_days) : ""
   );
   const [features, setFeatures] = useState((product?.default_features || []).join(", "));
+  const [matchedCatalogProductId, setMatchedCatalogProductId] = useState(
+    product?.matched_catalog_product_id || ""
+  );
 
   async function handleSubmit() {
     if (!name.trim()) {
@@ -1519,6 +1523,7 @@ function ProductModal({
       description,
       defaultExpiryDays: expiryDays,
       defaultFeatures: splitFeatures(features),
+      matchedCatalogProductId: matchedCatalogProductId || null,
     });
   }
 
@@ -1530,6 +1535,20 @@ function ProductModal({
         </Field>
         <Field label="Deskripsi">
           <textarea value={description} onChange={(event) => setDescription(event.target.value)} className={`${inputClassName} min-h-24`} />
+        </Field>
+        <Field label="Sinkron ke Produk Web">
+          <select
+            value={matchedCatalogProductId}
+            onChange={(event) => setMatchedCatalogProductId(event.target.value)}
+            className={inputClassName}
+          >
+            <option value="">-- Pilih Produk Aktif --</option>
+            {catalogProducts.map((catalogProduct) => (
+              <option key={catalogProduct.id} value={catalogProduct.id}>
+                {catalogProduct.title}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="Default Masa Aktif (hari)">
           <input type="number" min={1} value={expiryDays} onChange={(event) => setExpiryDays(event.target.value)} className={inputClassName} />
@@ -1755,12 +1774,14 @@ function buildProductResultMessage(result: {
   }
 
   const success = rows.filter((row) => row.status === "success").length;
-  const duplicate = rows.filter((row) => row.status === "duplicate").length;
+  const extended = rows.filter((row) => row.status === "extended").length;
+  const reactivated = rows.filter((row) => row.status === "reactivated").length;
   const error = rows.filter((row) => row.status === "error").length;
 
   const parts = [];
   if (success) parts.push(`${success} produk berhasil`);
-  if (duplicate) parts.push(`${duplicate} produk duplikat`);
+  if (extended) parts.push(`${extended} produk diperpanjang`);
+  if (reactivated) parts.push(`${reactivated} produk diaktifkan lagi`);
   if (error) parts.push(`${error} produk gagal`);
   return parts.join(", ");
 }

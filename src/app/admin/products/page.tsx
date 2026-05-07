@@ -10,7 +10,6 @@ import {
   matchesAdminSearch,
 } from "@/lib/admin-collections";
 import { copyTextToClipboard } from "@/lib/client-clipboard";
-import { getProductSyncKeyword } from "@/lib/license-product-sync";
 import {
   isAbsoluteUrl,
   isValidCustomTargetUrl,
@@ -583,9 +582,6 @@ export default function AdminProductsPage() {
                         <div>
                           <div className="text-white font-medium">{p.title}</div>
                           <div className="text-dark-500 text-xs font-mono">/{p.slug}</div>
-                          <div className="mt-1 text-[11px] text-primary-400">
-                            Sync lisensi: {getProductSyncKeyword(p)}
-                          </div>
                         </div>
                       </div>
                     </td>

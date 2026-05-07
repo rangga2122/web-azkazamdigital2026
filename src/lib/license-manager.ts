@@ -1,60 +1,25 @@
 import "server-only";
 
-import fs from "fs";
-import path from "path";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { provisionAffiliateAccessForLicensedEmail } from "@/lib/license-affiliate-access";
-import { createServiceRoleClient } from "@/lib/supabase/server";
-import { enrichLicenseProductsWithCatalogMatches } from "@/lib/license-product-sync";
+import { createLicenseManagerClient } from "@/lib/license-client";
+import {
+  enrichLicenseProductsWithCatalogMatches,
+  loadCatalogProducts,
+  loadLicenseProductCatalogSyncs,
+  upsertLicenseProductCatalogSync,
+} from "@/lib/license-product-sync";
 import type {
   LicenseBootstrap,
-  LicenseCatalogProduct,
   LicenseNotification,
   LicenseOrderLead,
   LicenseProduct,
+  LicenseProvisionResultStatus,
   LicenseSession,
   LicenseUser,
 } from "@/types/license-manager";
 
-type LicenseConfig = {
-  url: string;
-  serviceKey: string;
-};
-
 const SESSION_TIMEOUT_MS = 120 * 60 * 1000;
-
-export function resolveLicenseManagerConfig(): LicenseConfig | null {
-  const envUrl = process.env.LICENSE_SUPABASE_URL?.trim() || "";
-  const envKey = process.env.LICENSE_SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
-
-  if (envUrl && envKey) {
-    return { url: envUrl, serviceKey: envKey };
-  }
-
-  const htmlPath = path.resolve(process.cwd(), "..", "lisensi.html");
-  if (!fs.existsSync(htmlPath)) {
-    return null;
-  }
-
-  const html = fs.readFileSync(htmlPath, "utf8");
-  const url = html.match(/const SUPABASE_URL = '([^']+)'/)?.[1] || "";
-  const serviceKey = html.match(/const SERVICE_KEY = '([^']+)'/)?.[1] || "";
-
-  if (!url || !serviceKey) {
-    return null;
-  }
-
-  return { url, serviceKey };
-}
-
-export function createLicenseManagerClient(): SupabaseClient | null {
-  const config = resolveLicenseManagerConfig();
-  if (!config) return null;
-
-  return createClient(config.url, config.serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
 
 export async function loadLicenseBootstrap(): Promise<LicenseBootstrap> {
   const client = createLicenseManagerClient();
@@ -62,19 +27,24 @@ export async function loadLicenseBootstrap(): Promise<LicenseBootstrap> {
     return emptyBootstrap(false);
   }
 
-  const [users, products, sessions, notifications, orderLeads, catalogProducts] = await Promise.all([
+  const [users, products, sessions, notifications, orderLeads, catalogProducts, syncRows] = await Promise.all([
     loadUsers(client),
     loadProducts(client),
     loadSessions(client),
     loadNotifications(client),
     loadOrderLeads(client),
     loadCatalogProducts(),
+    loadLicenseProductCatalogSyncs(),
   ]);
 
   return {
     configured: true,
     users,
-    products: enrichLicenseProductsWithCatalogMatches(products, catalogProducts),
+    products: enrichLicenseProductsWithCatalogMatches(
+      products,
+      catalogProducts,
+      syncRows
+    ),
     catalogProducts,
     sessions,
     notifications,
@@ -143,49 +113,107 @@ export async function addLicenseUsers(input: {
   }>;
 }) {
   const client = requireLicenseClient();
-  const results: Array<{ productName: string; status: "success" | "duplicate" | "error" }> =
-    [];
+  const results: Array<{
+    productName: string;
+    status: LicenseProvisionResultStatus;
+  }> = [];
+  const normalizedEmail = input.email.toLowerCase();
   const requestedProductNames = input.productEntries
     .map((entry) => entry.productName)
     .filter(Boolean);
   const { data: productDefaults } = requestedProductNames.length
     ? await client
         .from("products")
-        .select("name, default_features")
+        .select("name, default_features, default_expiry_days")
         .in("name", requestedProductNames)
-    : { data: [] as Array<{ name: string; default_features: string[] | null }> };
-  const defaultFeaturesByProduct = new Map(
+    : {
+        data: [] as Array<{
+          name: string;
+          default_features: string[] | null;
+          default_expiry_days: number | null;
+        }>,
+      };
+  const productDefaultsByName = new Map(
     (productDefaults || []).map((product) => [
       product.name,
-      Array.isArray(product.default_features) ? product.default_features : [],
+      {
+        defaultFeatures: Array.isArray(product.default_features)
+          ? product.default_features
+          : [],
+        defaultExpiryDays:
+          Number(product.default_expiry_days || 0) > 0
+            ? Number(product.default_expiry_days)
+            : null,
+      },
     ])
   );
 
   for (const entry of input.productEntries) {
+    const productDefaults = productDefaultsByName.get(entry.productName);
+    const nextAllowedFeatures = resolveAllowedFeatures({
+      requestedFeatures: input.allowedFeatures,
+      defaultFeatures: productDefaults?.defaultFeatures || [],
+    });
+    const nextMaxSessions = Math.max(Number(entry.maxSessions || 1), 1);
     const existing = await client
       .from("users")
-      .select("id")
-      .eq("email", input.email.toLowerCase())
+      .select("id, expiry_date, is_active, allowed_features, max_sessions, created_at")
+      .eq("email", normalizedEmail)
       .eq("product_name", entry.productName)
-      .maybeSingle();
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (existing.data?.id) {
-      results.push({ productName: entry.productName, status: "duplicate" });
+    if (existing.error) {
+      throw existing.error;
+    }
+
+    const existingLicense = existing.data?.[0];
+
+    if (existingLicense?.id) {
+      const nextExpiryDate = resolveRenewedExpiryDate({
+        currentExpiryDate: existingLicense.expiry_date,
+        requestedExpiryDate: entry.expiryDate || null,
+        defaultExpiryDays: productDefaults?.defaultExpiryDays || null,
+        isCurrentlyActive:
+          Boolean(existingLicense.is_active) &&
+          isFutureOrToday(existingLicense.expiry_date),
+      });
+      const { error } = await client
+        .from("users")
+        .update({
+          role: input.role,
+          expiry_date: nextExpiryDate,
+          allowed_features:
+            nextAllowedFeatures.length > 0
+              ? nextAllowedFeatures
+              : existingLicense.allowed_features,
+          max_sessions: Math.max(
+            Number(existingLicense.max_sessions || 1),
+            nextMaxSessions
+          ),
+          is_active: true,
+        })
+        .eq("id", existingLicense.id);
+
+      results.push({
+        productName: entry.productName,
+        status: error
+          ? "error"
+          : Boolean(existingLicense.is_active) &&
+            isFutureOrToday(existingLicense.expiry_date)
+          ? "extended"
+          : "reactivated",
+      });
       continue;
     }
 
     const { error } = await client.from("users").insert({
       id: crypto.randomUUID(),
-      email: input.email.toLowerCase(),
+      email: normalizedEmail,
       role: input.role,
       expiry_date: entry.expiryDate || null,
-      allowed_features:
-        input.allowedFeatures.length > 0
-          ? input.allowedFeatures
-          : defaultFeaturesByProduct.get(entry.productName)?.length
-          ? defaultFeaturesByProduct.get(entry.productName)
-          : null,
-      max_sessions: Math.max(Number(entry.maxSessions || 1), 1),
+      allowed_features: nextAllowedFeatures.length > 0 ? nextAllowedFeatures : null,
+      max_sessions: nextMaxSessions,
       product_name: entry.productName,
       is_active: true,
     });
@@ -208,6 +236,104 @@ export async function addLicenseUsers(input: {
     results,
     data: await loadLicenseBootstrap(),
   };
+}
+
+function resolveAllowedFeatures(input: {
+  requestedFeatures: string[];
+  defaultFeatures: string[];
+}) {
+  if (input.requestedFeatures.length > 0) {
+    return input.requestedFeatures;
+  }
+
+  if (input.defaultFeatures.length > 0) {
+    return input.defaultFeatures;
+  }
+
+  return [];
+}
+
+function resolveRenewedExpiryDate(input: {
+  currentExpiryDate: string | null;
+  requestedExpiryDate: string | null;
+  defaultExpiryDays: number | null;
+  isCurrentlyActive: boolean;
+}) {
+  const durationDays = resolveLicenseDurationDays({
+    requestedExpiryDate: input.requestedExpiryDate,
+    defaultExpiryDays: input.defaultExpiryDays,
+  });
+
+  if (durationDays === null) {
+    return input.currentExpiryDate;
+  }
+
+  const anchorDate = input.isCurrentlyActive
+    ? parseDateOnly(input.currentExpiryDate) || startOfToday()
+    : startOfToday();
+
+  return formatDateOnly(addDays(anchorDate, durationDays));
+}
+
+function resolveLicenseDurationDays(input: {
+  requestedExpiryDate: string | null;
+  defaultExpiryDays: number | null;
+}) {
+  const requestedDays = getDaysUntil(input.requestedExpiryDate);
+  if (requestedDays !== null && requestedDays > 0) {
+    return requestedDays;
+  }
+
+  const fallbackDays =
+    Number.isFinite(Number(input.defaultExpiryDays)) &&
+    Number(input.defaultExpiryDays) > 0
+      ? Number(input.defaultExpiryDays)
+      : null;
+  if (fallbackDays !== null) {
+    return fallbackDays;
+  }
+
+  return requestedDays;
+}
+
+function isFutureOrToday(value: string | null) {
+  if (!value) return true;
+  const parsed = parseDateOnly(value);
+  if (!parsed) return false;
+  return parsed.getTime() >= startOfToday().getTime();
+}
+
+function getDaysUntil(value: string | null) {
+  const parsed = parseDateOnly(value);
+  if (!parsed) return null;
+  const diffMs = parsed.getTime() - startOfToday().getTime();
+  return Math.max(Math.round(diffMs / (24 * 60 * 60 * 1000)), 0);
+}
+
+function startOfToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function addDays(date: Date, days: number) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+}
+
+function parseDateOnly(value: string | null) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const [year, month, day] = text.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function formatDateOnly(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export async function updateLicenseUser(input: {
@@ -314,16 +440,28 @@ export async function createLicenseProduct(input: {
   description?: string | null;
   defaultFeatures?: string[];
   defaultExpiryDays?: number | null;
+  matchedCatalogProductId?: string | null;
 }) {
   const client = requireLicenseClient();
-  const { error } = await client.from("products").insert({
-    name: input.name,
-    description: input.description || null,
-    default_features: input.defaultFeatures?.length ? input.defaultFeatures : [],
-    default_expiry_days: input.defaultExpiryDays || null,
-    is_active: true,
+  const { data, error } = await client
+    .from("products")
+    .insert({
+      name: input.name,
+      description: input.description || null,
+      default_features: input.defaultFeatures?.length ? input.defaultFeatures : [],
+      default_expiry_days: input.defaultExpiryDays || null,
+      is_active: true,
+    })
+    .select("id, name")
+    .single();
+  if (error || !data) throw error || new Error("Produk lisensi gagal dibuat.");
+
+  await upsertLicenseProductCatalogSync({
+    licenseProductId: Number(data.id),
+    licenseProductName: String(data.name || input.name),
+    catalogProductId: input.matchedCatalogProductId || null,
   });
-  if (error) throw error;
+
   return loadLicenseBootstrap();
 }
 
@@ -334,6 +472,7 @@ export async function updateLicenseProduct(input: {
   defaultFeatures?: string[];
   defaultExpiryDays?: number | null;
   isActive?: boolean;
+  matchedCatalogProductId?: string | null;
 }) {
   const client = requireLicenseClient();
   const patch: Record<string, unknown> = {};
@@ -349,6 +488,25 @@ export async function updateLicenseProduct(input: {
 
   const { error } = await client.from("products").update(patch).eq("id", input.id);
   if (error) throw error;
+
+  if (input.matchedCatalogProductId !== undefined) {
+    const { data: updatedProduct, error: updatedProductError } = await client
+      .from("products")
+      .select("id, name")
+      .eq("id", input.id)
+      .single();
+
+    if (updatedProductError || !updatedProduct) {
+      throw updatedProductError || new Error("Produk lisensi tidak ditemukan.");
+    }
+
+    await upsertLicenseProductCatalogSync({
+      licenseProductId: Number(updatedProduct.id),
+      licenseProductName: String(updatedProduct.name || input.name || ""),
+      catalogProductId: input.matchedCatalogProductId,
+    });
+  }
+
   return loadLicenseBootstrap();
 }
 
@@ -493,25 +651,6 @@ async function loadProducts(client: SupabaseClient) {
   }
 
   return (data || []) as LicenseProduct[];
-}
-
-async function loadCatalogProducts() {
-  try {
-    const supabase = await createServiceRoleClient();
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, title, slug, badge, is_active")
-      .order("title", { ascending: true });
-
-    if (error) {
-      throw error;
-    }
-
-    return (data || []) as LicenseCatalogProduct[];
-  } catch (error) {
-    console.error("Load catalog products for license sync error:", error);
-    return [] as LicenseCatalogProduct[];
-  }
 }
 
 async function loadNotifications(client: SupabaseClient) {
