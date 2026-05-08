@@ -85,6 +85,7 @@ export type WhatsappOrderContext = {
   orderItems: string;
   paymentMethod: string;
   siteTitle: string;
+  invoiceUrl: string;
   productImageUrl?: string | null;
 };
 
@@ -106,6 +107,7 @@ export type PaidAccessTemplateContext = {
   siteTitle: string;
   orderCode: string;
   orderTotal: string;
+  invoiceUrl: string;
   loginEmail: string;
   loginPassword: string;
   loginUrl: string;
@@ -118,25 +120,25 @@ export type PaidAccessTemplateContext = {
 };
 
 const DEFAULT_CUSTOMER_TEMPLATE =
-  "Terima kasih *{customer_name}* atas pesanan Anda!\n\nPesanan *#{order_id}* telah kami terima.\n*Total:* {order_total}\n*Metode Pembayaran:* {payment_method}\n\nKami akan segera memproses pesanan Anda.";
+  "Terima kasih *{customer_name}* atas pesanan Anda!\n\nPesanan *#{order_id}* telah kami terima.\n*Total:* {order_total}\n*Metode Pembayaran:* {payment_method}\n*Invoice:* {invoice_url}\n\nKami akan segera memproses pesanan Anda.";
 
 const DEFAULT_ADMIN_TEMPLATE =
-  "Pesanan baru masuk.\n\n*Kode:* #{order_id}\n*Pelanggan:* {customer_name}\n*Email:* {customer_email}\n*WhatsApp:* {customer_phone}\n*Total:* {order_total}\n*Item:* {order_items}\n*Status:* {order_status}";
+  "Pesanan baru masuk.\n\n*Kode:* #{order_id}\n*Pelanggan:* {customer_name}\n*Email:* {customer_email}\n*WhatsApp:* {customer_phone}\n*Total:* {order_total}\n*Item:* {order_items}\n*Status:* {order_status}\n*Invoice:* {invoice_url}";
 
 const DEFAULT_STATUS_TEMPLATE =
-  "Halo *{customer_name}*,\n\nStatus pesanan *#{order_id}* telah diperbarui menjadi: *{order_status}*.\n\nTerima kasih telah berbelanja di toko kami.";
+  "Halo *{customer_name}*,\n\nStatus pesanan *#{order_id}* telah diperbarui menjadi: *{order_status}*.\n\nInvoice order Anda:\n{invoice_url}\n\nTerima kasih telah berbelanja di toko kami.";
 
 const DEFAULT_BROADCAST_TEMPLATE =
   "Halo {customer_name},\n\nTerima kasih sudah menjadi pelanggan {site_title}.\nKami punya penawaran terbaru untuk Anda.\n\nBalas pesan ini jika ingin kami bantu lebih lanjut.";
 
 const DEFAULT_FOLLOWUP_TEMPLATE =
-  "Halo *{customer_name}*,\n\nKami melihat pesanan Anda *#{order_id}* dengan status *{order_status}* sejak *{order_date}*.\n\nApakah ada yang bisa kami bantu untuk menyelesaikan pesanan Anda?\n\nTerima kasih.";
+  "Halo *{customer_name}*,\n\nKami melihat pesanan Anda *#{order_id}* dengan status *{order_status}* sejak *{order_date}*.\n\nJika perlu, Anda bisa lanjutkan pembayaran dari invoice ini:\n{invoice_url}\n\nApakah ada yang bisa kami bantu untuk menyelesaikan pesanan Anda?\n\nTerima kasih.";
 
 const DEFAULT_FOLLOWUP_TEMPLATE_2 =
-  "Halo *{customer_name}*,\n\nKami ingin mengingatkan kembali bahwa pesanan Anda *#{order_id}* masih berstatus *{order_status}* sejak *{order_date}*.\n\nJika ada kendala, silakan hubungi kami untuk bantuan lebih lanjut.\n\nTerima kasih.";
+  "Halo *{customer_name}*,\n\nKami ingin mengingatkan kembali bahwa pesanan Anda *#{order_id}* masih berstatus *{order_status}* sejak *{order_date}*.\n\nInvoice order Anda masih aktif di:\n{invoice_url}\n\nJika ada kendala, silakan hubungi kami untuk bantuan lebih lanjut.\n\nTerima kasih.";
 
 const DEFAULT_FOLLOWUP_TEMPLATE_3 =
-  "Halo *{customer_name}*,\n\nIni adalah pengingat terakhir untuk pesanan Anda *#{order_id}* yang masih berstatus *{order_status}*.\n\nMohon segera selesaikan transaksi Anda atau hubungi kami jika membutuhkan bantuan.\n\nTerima kasih.";
+  "Halo *{customer_name}*,\n\nIni adalah pengingat terakhir untuk pesanan Anda *#{order_id}* yang masih berstatus *{order_status}*.\n\nInvoice order Anda:\n{invoice_url}\n\nMohon segera selesaikan transaksi Anda atau hubungi kami jika membutuhkan bantuan.\n\nTerima kasih.";
 
 const DEFAULT_CONFIG: WhatsappNotificationConfig = {
   enabled: false,
@@ -444,6 +446,7 @@ export function resolvePaidAccessTemplate(
     "{site_title}": context.siteTitle,
     "{order_id}": context.orderCode,
     "{order_total}": context.orderTotal,
+    "{invoice_url}": context.invoiceUrl,
     "{login_email}": context.loginEmail,
     "{login_password}": context.loginPassword,
     "{login_url}": context.loginUrl,
@@ -705,6 +708,7 @@ export function buildWhatsappOrderContext(args: {
   createdAt?: string | null;
   previousStatus?: string | null;
   siteName: string;
+  origin?: string | null;
   productImageUrl?: string | null;
 }) {
   return {
@@ -720,6 +724,7 @@ export function buildWhatsappOrderContext(args: {
     orderItems: `${args.productName} (1x)`,
     paymentMethod: "Bank Transfer/QRIS",
     siteTitle: args.siteName,
+    invoiceUrl: buildOrderInvoiceUrl(args.orderCode, args.origin),
     productImageUrl: args.productImageUrl || null,
   } satisfies WhatsappOrderContext;
 }
@@ -754,6 +759,7 @@ function buildOrderTemplateTokens(context: WhatsappOrderContext) {
     "{customer_phone}": context.customerPhone,
     "{payment_method}": context.paymentMethod,
     "{site_title}": context.siteTitle,
+    "{invoice_url}": context.invoiceUrl,
   };
 }
 
@@ -802,6 +808,20 @@ function formatCurrency(value: number) {
 
 function stripTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
+}
+
+function buildOrderInvoiceUrl(orderCode: string, origin?: string | null) {
+  const base =
+    String(origin || "").trim() ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000";
+
+  try {
+    return new URL(`/thank-you/${orderCode}`, base).toString();
+  } catch {
+    return `/thank-you/${orderCode}`;
+  }
 }
 
 function buildProviderHeaders(

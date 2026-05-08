@@ -15,12 +15,15 @@ type BaseEmailPayload = {
 };
 
 type PaymentInstructions = {
+  provider?: "manual" | "pakasir";
   bankName: string | null;
   accountNumber: string | null;
   accountName: string | null;
   qrisUrl: string | null;
   qrisSourceUrl?: string | null;
   qrisAmount?: number | null;
+  gatewayFee?: number | null;
+  totalPayAmount?: number | null;
 };
 
 type OrderInvoiceEmailPayload = BaseEmailPayload & {
@@ -36,6 +39,7 @@ type PaidOrderEmailPayload = BaseEmailPayload & {
   dashboardUrl: string;
   loginUrl: string;
   registerUrl: string;
+  invoiceUrl: string;
   affiliateCode: string | null;
   loginEmail: string;
   defaultPassword: string | null;
@@ -201,6 +205,9 @@ export async function sendOrderInvoiceEmail(payload: OrderInvoiceEmailPayload) {
     payload.siteName,
     payload.supportEmail
   );
+  const paymentProvider = payload.payment.provider === "pakasir" ? "pakasir" : "manual";
+  const gatewayFee = Math.max(Number(payload.payment.gatewayFee || 0), 0);
+  const totalPayAmount = Number(payload.payment.totalPayAmount || payload.totalAmount || 0);
   const qrisUrl = absoluteUrl(payload.payment.qrisUrl);
   const inlineQrisImage = await resolveInlineQrisImage(payload.payment);
   const qrisImageSource = inlineQrisImage ? `cid:${inlineQrisImage.cid}` : qrisUrl;
@@ -217,7 +224,7 @@ export async function sendOrderInvoiceEmail(payload: OrderInvoiceEmailPayload) {
           <p style="margin:0 0 8px;color:#475569;font-size:13px;">Kode order</p>
           <p style="margin:0 0 16px;color:#0f172a;font-size:16px;font-weight:700;">${escapeHtml(payload.orderCode)}</p>
           <p style="margin:0 0 8px;color:#475569;font-size:13px;">Total pembayaran</p>
-          <p style="margin:0;color:#dc2626;font-size:24px;font-weight:800;">${money(payload.totalAmount)}</p>
+          <p style="margin:0;color:#dc2626;font-size:24px;font-weight:800;">${money(totalPayAmount)}</p>
         </div>
 
         <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">
@@ -237,24 +244,36 @@ export async function sendOrderInvoiceEmail(payload: OrderInvoiceEmailPayload) {
             <td style="padding:10px 0;border-bottom:1px solid #e2e8f0;color:#475569;">Kode unik</td>
             <td style="padding:10px 0;border-bottom:1px solid #e2e8f0;color:#0f172a;text-align:right;font-weight:600;">${money(payload.uniqueCode)}</td>
           </tr>
+          ${
+            gatewayFee > 0
+              ? `<tr>
+                  <td style="padding:10px 0;border-bottom:1px solid #e2e8f0;color:#475569;">Biaya QRIS</td>
+                  <td style="padding:10px 0;border-bottom:1px solid #e2e8f0;color:#0f172a;text-align:right;font-weight:600;">${money(gatewayFee)}</td>
+                </tr>`
+              : ""
+          }
           <tr>
             <td style="padding:14px 0 0;color:#0f172a;font-weight:700;">Total transfer</td>
-            <td style="padding:14px 0 0;color:#0f172a;text-align:right;font-weight:800;">${money(payload.totalAmount)}</td>
+            <td style="padding:14px 0 0;color:#0f172a;text-align:right;font-weight:800;">${money(totalPayAmount)}</td>
           </tr>
         </table>
 
-        <div style="margin:0 0 20px;padding:16px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;">
-          <h2 style="margin:0 0 12px;color:#1d4ed8;font-size:16px;">Transfer ke rekening</h2>
-          <p style="margin:0 0 6px;color:#0f172a;font-size:14px;"><strong>${escapeHtml(payload.payment.bankName || "-")}</strong></p>
-          <p style="margin:0 0 6px;color:#dc2626;font-size:20px;font-weight:800;">${escapeHtml(payload.payment.accountNumber || "-")}</p>
-          <p style="margin:0;color:#475569;font-size:13px;">a.n. ${escapeHtml(payload.payment.accountName || "-")}</p>
-        </div>
+        ${
+          paymentProvider === "manual"
+            ? `<div style="margin:0 0 20px;padding:16px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;">
+                <h2 style="margin:0 0 12px;color:#1d4ed8;font-size:16px;">Transfer ke rekening</h2>
+                <p style="margin:0 0 6px;color:#0f172a;font-size:14px;"><strong>${escapeHtml(payload.payment.bankName || "-")}</strong></p>
+                <p style="margin:0 0 6px;color:#dc2626;font-size:20px;font-weight:800;">${escapeHtml(payload.payment.accountNumber || "-")}</p>
+                <p style="margin:0;color:#475569;font-size:13px;">a.n. ${escapeHtml(payload.payment.accountName || "-")}</p>
+              </div>`
+            : ""
+        }
 
         ${
           qrisImageSource
             ? `<div style="margin:0 0 20px;padding:16px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;">
-                <h2 style="margin:0 0 12px;color:#0f172a;font-size:16px;">Bayar dengan QRIS</h2>
-                <p style="margin:0 0 12px;color:#475569;font-size:13px;">Scan QRIS berikut atau buka link gambar jika email Anda memblokir gambar.</p>
+                <h2 style="margin:0 0 12px;color:#0f172a;font-size:16px;">${paymentProvider === "pakasir" ? "Bayar dengan QRIS Otomatis" : "Bayar dengan QRIS"}</h2>
+                <p style="margin:0 0 12px;color:#475569;font-size:13px;">${paymentProvider === "pakasir" ? "Scan QRIS berikut untuk membayar pesanan Anda. Nilai pembayaran akan terisi otomatis." : "Scan QRIS berikut atau buka link gambar jika email Anda memblokir gambar."}</p>
                 <div style="margin:0 0 12px;text-align:center;">
                   <img src="${qrisImageSource}" alt="QRIS pembayaran" style="max-width:220px;width:100%;height:auto;border-radius:10px;border:1px solid #e2e8f0;background:#ffffff;padding:8px;" />
                 </div>
@@ -296,9 +315,12 @@ export async function sendOrderInvoiceEmail(payload: OrderInvoiceEmailPayload) {
     `Subtotal: ${money(payload.subtotal)}`,
     payload.discountAmount > 0 ? `Diskon: -${money(payload.discountAmount)}` : null,
     `Kode unik: ${money(payload.uniqueCode)}`,
-    `Total transfer: ${money(payload.totalAmount)}`,
+    gatewayFee > 0 ? `Biaya QRIS: ${money(gatewayFee)}` : null,
+    `Total transfer: ${money(totalPayAmount)}`,
     "",
-    `Rekening: ${payload.payment.bankName || "-"} / ${payload.payment.accountNumber || "-"} / ${payload.payment.accountName || "-"}`,
+    paymentProvider === "manual"
+      ? `Rekening: ${payload.payment.bankName || "-"} / ${payload.payment.accountNumber || "-"} / ${payload.payment.accountName || "-"}`
+      : "Metode bayar: QRIS otomatis",
     payload.payment.qrisUrl ? `QRIS: ${absoluteUrl(payload.payment.qrisUrl)}` : null,
     `Invoice: ${payload.thankYouUrl}`,
     `Konfirmasi WhatsApp: ${payload.whatsappConfirmationUrl}`,
@@ -387,6 +409,9 @@ export async function sendPaidOrderEmail(payload: PaidOrderEmailPayload) {
         ${loginSection}
         ${accessSection}
         <div style="margin:24px 0 8px;">
+          <a href="${payload.invoiceUrl}" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;margin-right:8px;">
+            Buka Invoice
+          </a>
           <a href="${payload.dashboardUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;margin-right:8px;">
             Buka Dashboard Afiliasi
           </a>
@@ -422,6 +447,7 @@ export async function sendPaidOrderEmail(payload: PaidOrderEmailPayload) {
     `Pembayaran untuk ${payload.productName} sudah berhasil diverifikasi.`,
     `Kode order: ${payload.orderCode}`,
     `Total: ${money(payload.totalAmount)}`,
+    `Invoice: ${payload.invoiceUrl}`,
     "",
     "Pesanan Anda sudah kami terima dan produk sudah aktif.",
     "Dashboard afiliasi Anda juga sudah siap digunakan.",

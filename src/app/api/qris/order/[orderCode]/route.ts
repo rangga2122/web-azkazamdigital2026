@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { createDynamicQrisSvgFromSource } from "@/lib/qris";
+import { createDynamicQrisSvgFromSource, createQrisSvgFromPayload } from "@/lib/qris";
 
 export const runtime = "nodejs";
 
@@ -15,7 +15,7 @@ export async function GET(
     const [orderRes, settingsRes] = await Promise.all([
       supabase
         .from("orders")
-        .select("order_code, total_amount, price")
+        .select("order_code, total_amount, price, payment_provider, gateway_payment_number")
         .eq("order_code", orderCode)
         .single(),
       supabase
@@ -27,6 +27,21 @@ export async function GET(
 
     if (!orderRes.data) {
       return new NextResponse("Order tidak ditemukan.", { status: 404 });
+    }
+
+    if (
+      orderRes.data.payment_provider === "pakasir" &&
+      orderRes.data.gateway_payment_number
+    ) {
+      const svg = await createQrisSvgFromPayload(orderRes.data.gateway_payment_number);
+
+      return new NextResponse(svg, {
+        status: 200,
+        headers: {
+          "Content-Type": "image/svg+xml; charset=utf-8",
+          "Cache-Control": "no-store, max-age=0",
+        },
+      });
     }
 
     const totalAmount = Number(

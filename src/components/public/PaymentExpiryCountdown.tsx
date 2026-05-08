@@ -7,17 +7,26 @@ type PaymentExpiryCountdownProps = {
   createdAt: string;
   status: string;
   expiryMinutes?: number;
+  expiresAt?: string | null;
 };
 
 export function PaymentExpiryCountdown({
   createdAt,
   status,
   expiryMinutes = 10,
+  expiresAt = null,
 }: PaymentExpiryCountdownProps) {
   const expiryTimestamp = useMemo(() => {
+    if (expiresAt) {
+      const explicitExpiryMs = new Date(expiresAt).getTime();
+      if (Number.isFinite(explicitExpiryMs)) {
+        return explicitExpiryMs;
+      }
+    }
+
     const createdAtMs = new Date(createdAt).getTime();
     return createdAtMs + expiryMinutes * 60 * 1000;
-  }, [createdAt, expiryMinutes]);
+  }, [createdAt, expiryMinutes, expiresAt]);
 
   const [remainingMs, setRemainingMs] = useState(() =>
     Math.max(expiryTimestamp - Date.now(), 0)

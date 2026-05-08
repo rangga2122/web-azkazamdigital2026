@@ -13,6 +13,7 @@ import type { Product } from "@/types";
 
 export type OrderFormSettings = {
   checkout_coupon_enabled: boolean;
+  pakasir_enabled: boolean;
 };
 
 export function OrderFormClient({
@@ -46,6 +47,9 @@ export function OrderFormClient({
   const previewDiscount = appliedCoupon?.discount_amount || 0;
   const previewBaseTotal = Math.max(product.price - previewDiscount, 0);
   const previewTotal = previewBaseTotal + previewUniqueCode;
+  const paymentMethodLabel = settings.pakasir_enabled
+    ? "QRIS Otomatis"
+    : "Bank Transfer/QRIS";
 
   useEffect(() => {
     trackPageView({ type: "checkout", productId: product.id });
@@ -303,9 +307,14 @@ export function OrderFormClient({
               decoding="async"
             />
             <span className="text-base font-semibold text-slate-950">
-              Bank Transfer/QRIS
+              {paymentMethodLabel}
             </span>
           </label>
+          <p className="mt-2 text-sm text-slate-600">
+            {settings.pakasir_enabled
+              ? "QRIS dibuat otomatis saat pesanan dikirim, jadi Anda bisa langsung bayar dari halaman terima kasih."
+              : "Anda bisa melanjutkan pembayaran lewat QRIS atau transfer manual seperti biasa."}
+          </p>
         </div>
 
         <button

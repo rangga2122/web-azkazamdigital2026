@@ -5,6 +5,11 @@ import {
 } from "@/lib/supabase/server";
 import { sendOrderInvoiceEmail } from "@/lib/email";
 import {
+  createPakasirQrisTransaction,
+  isPakasirConfigured,
+  resolvePakasirConfig,
+} from "@/lib/pakasir";
+import {
   generateOrderCode,
   normalizeUniquePaymentCode,
 } from "@/lib/utils";
@@ -51,6 +56,9 @@ type PostOrderSideEffectsInput = {
   discountAmount: number;
   uniqueCode: number;
   totalAmount: number;
+  gatewayFee: number;
+  gatewayTotalPayment: number;
+  paymentProvider: "manual" | "pakasir";
   settings: {
     site_name: string | null;
     email: string | null;
@@ -107,7 +115,7 @@ export async function POST(request: NextRequest) {
       supabase
         .from("site_settings")
         .select(
-          "checkout_coupon_enabled, site_name, email, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number, social_links"
+          "checkout_coupon_enabled, site_name, email, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number, social_links, pakasir_enabled, pakasir_mode, pakasir_project_slug, pakasir_api_key, pakasir_webhook_url"
         )
         .limit(1)
         .single(),
@@ -124,6 +132,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Produk tidak ditemukan atau tidak aktif." },
         { status: 404 }
+      );
+    }
+
+    const pakasirConfig = resolvePakasirConfig(settings || {});
+    const pakasirEnabled = Boolean(pakasirConfig.enabled);
+    if (pakasirEnabled && !isPakasirConfigured(pakasirConfig)) {
+      return NextResponse.json(
+        { error: "Konfigurasi QRIS otomatis belum lengkap." },
+        { status: 500 }
       );
     }
 
@@ -195,7 +212,7 @@ export async function POST(request: NextRequest) {
     const subtotal = Number(product.price);
     const uniqueCode = normalizeUniquePaymentCode(unique_code);
     const totalAmount = Math.max(subtotal - discountAmount, 0) + uniqueCode;
-    const { data: order, error: orderError } = await supabase
+    const { data: createdOrder, error: orderError } = await supabase
       .from("orders")
       .insert({
         order_code: orderCode,
@@ -228,18 +245,78 @@ export async function POST(request: NextRequest) {
       .select("id, order_code, created_at, status")
       .single();
 
-    if (orderError || !order) {
+    if (orderError || !createdOrder) {
       return NextResponse.json(
         { error: orderError?.message || "Pesanan gagal dibuat." },
         { status: 400 }
       );
     }
 
+    let order = createdOrder;
+
     if (coupon) {
       await supabase
         .from("coupon_codes")
         .update({ usage_count: Number(coupon.usage_count || 0) + 1 })
         .eq("id", coupon.id);
+    }
+
+    let paymentProvider: "manual" | "pakasir" = "manual";
+    let gatewayFee = 0;
+    let gatewayTotalPayment = totalAmount;
+
+    if (pakasirEnabled) {
+      try {
+        const pakasirPayment = await createPakasirQrisTransaction({
+          projectSlug: pakasirConfig.projectSlug!,
+          apiKey: pakasirConfig.apiKey!,
+          orderId: order.order_code,
+          amount: totalAmount,
+        });
+
+        gatewayFee = Math.max(Number(pakasirPayment.fee || 0), 0);
+        gatewayTotalPayment = Number(
+          pakasirPayment.total_payment || totalAmount + gatewayFee
+        );
+        paymentProvider = "pakasir";
+
+        const { data: updatedGatewayOrder, error: gatewayUpdateError } = await supabase
+          .from("orders")
+          .update({
+            payment_provider: "pakasir",
+            payment_method: "qris",
+            gateway_status: "pending",
+            gateway_order_id: pakasirPayment.order_id || order.order_code,
+            gateway_amount: Number(pakasirPayment.amount || totalAmount),
+            gateway_fee: gatewayFee,
+            gateway_total_payment: gatewayTotalPayment,
+            gateway_payment_number: pakasirPayment.payment_number,
+            gateway_expired_at: pakasirPayment.expired_at,
+            gateway_payload: pakasirPayment,
+          })
+          .eq("id", order.id)
+          .select("id, order_code, created_at, status")
+          .single();
+
+        if (gatewayUpdateError || !updatedGatewayOrder) {
+          throw new Error(
+            gatewayUpdateError?.message || "Gagal menyimpan transaksi QRIS otomatis."
+          );
+        }
+
+        order = updatedGatewayOrder;
+      } catch (gatewayError) {
+        await supabase
+          .from("orders")
+          .update({
+            payment_provider: "pakasir",
+            payment_method: "qris",
+            gateway_status: "failed",
+          })
+          .eq("id", order.id);
+
+        throw gatewayError;
+      }
     }
 
     const origin = getRequestOrigin(request);
@@ -267,6 +344,9 @@ export async function POST(request: NextRequest) {
           discountAmount,
           uniqueCode,
           totalAmount,
+          gatewayFee,
+          gatewayTotalPayment,
+          paymentProvider,
           settings: {
             site_name: settings?.site_name || null,
             email: settings?.email || null,
@@ -299,6 +379,7 @@ export async function POST(request: NextRequest) {
       success: true,
       order_code: order.order_code,
       total_amount: totalAmount,
+      gateway_total_payment: gatewayTotalPayment,
       thank_you_url: thankYouUrl,
       background_jobs: "scheduled",
     });
@@ -368,13 +449,27 @@ async function runPostOrderSideEffects(input: PostOrderSideEffectsInput) {
       siteName: input.settings.site_name || "AzkazamDigital",
       supportEmail: input.settings.email || null,
       payment: {
-        bankName: input.settings.payment_bank_name || "BCA",
+        provider: input.paymentProvider,
+        bankName:
+          input.paymentProvider === "pakasir"
+            ? null
+            : input.settings.payment_bank_name || "BCA",
         accountNumber:
-          input.settings.payment_account_number || "7891502145",
-        accountName: input.settings.payment_account_name || "ASNIDAR NUR",
+          input.paymentProvider === "pakasir"
+            ? null
+            : input.settings.payment_account_number || "7891502145",
+        accountName:
+          input.paymentProvider === "pakasir"
+            ? null
+            : input.settings.payment_account_name || "ASNIDAR NUR",
         qrisUrl: input.dynamicQrisUrl,
-        qrisSourceUrl: input.settings.payment_qris_url || "/qris.webp",
-        qrisAmount: input.totalAmount,
+        qrisSourceUrl:
+          input.paymentProvider === "pakasir"
+            ? null
+            : input.settings.payment_qris_url || "/qris.webp",
+        qrisAmount: input.paymentProvider === "pakasir" ? null : input.totalAmount,
+        gatewayFee: input.gatewayFee,
+        totalPayAmount: input.gatewayTotalPayment,
       },
     }),
     sendOrderCreatedWhatsappNotifications({
@@ -386,10 +481,11 @@ async function runPostOrderSideEffects(input: PostOrderSideEffectsInput) {
         buyerEmail: input.buyerEmail,
         buyerWhatsapp: input.buyerWhatsapp,
         productName: input.product.title,
-        totalAmount: input.totalAmount,
+        totalAmount: input.gatewayTotalPayment,
         status: input.order.status,
         createdAt: input.order.created_at,
         siteName: input.settings.site_name || "AzkazamDigital",
+        origin: input.origin,
         productImageUrl: productImageFromProduct(input.product),
       }),
       origin: input.origin,
@@ -405,7 +501,7 @@ async function runPostOrderSideEffects(input: PostOrderSideEffectsInput) {
         buyer_whatsapp: input.buyerWhatsapp,
         product_name: input.product.title,
         product_id: input.product.id,
-        total_amount: input.totalAmount,
+        total_amount: input.gatewayTotalPayment,
         status: input.order.status,
         created_at: input.order.created_at,
       },

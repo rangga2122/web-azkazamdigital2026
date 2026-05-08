@@ -1575,6 +1575,7 @@ function TemplateHint() {
       <code>{"{order_status}"}</code>, <code>{"{previous_status}"}</code>,{" "}
       <code>{"{order_items}"}</code>, <code>{"{customer_email}"}</code>,{" "}
       <code>{"{customer_phone}"}</code>, <code>{"{payment_method}"}</code>,{" "}
+      <code>{"{invoice_url}"}</code>,{" "}
       <code>{"{site_title}"}</code>, <code>{"{last_order_id}"}</code>,{" "}
       <code>{"{last_order_date}"}</code>, <code>{"{last_order_total}"}</code>.
       Broadcast juga mendukung spintax sederhana seperti{" "}
@@ -1589,7 +1590,8 @@ function PaidAccessHint() {
       Variabel akses produk: <code>{"{customer_name}"}</code>,{" "}
       <code>{"{customer_email}"}</code>, <code>{"{customer_phone}"}</code>,{" "}
       <code>{"{product_name}"}</code>, <code>{"{order_id}"}</code>,{" "}
-      <code>{"{order_total}"}</code>, <code>{"{login_email}"}</code>,{" "}
+      <code>{"{order_total}"}</code>, <code>{"{invoice_url}"}</code>,{" "}
+      <code>{"{login_email}"}</code>,{" "}
       <code>{"{login_password}"}</code>, <code>{"{login_url}"}</code>,{" "}
       <code>{"{dashboard_url}"}</code>, <code>{"{register_url}"}</code>,{" "}
       <code>{"{affiliate_code}"}</code>, <code>{"{product_download_url}"}</code>,{" "}

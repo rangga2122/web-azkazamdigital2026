@@ -45,6 +45,11 @@ export interface SiteSettings {
   payment_account_number: string | null;
   payment_account_name: string | null;
   payment_qris_url: string | null;
+  pakasir_enabled: boolean;
+  pakasir_mode: 'sandbox' | 'live';
+  pakasir_project_slug: string | null;
+  pakasir_api_key: string | null;
+  pakasir_webhook_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -253,6 +258,17 @@ export interface Order {
   coupon_code: string | null;
   referral_code: string | null;
   status: 'pending' | 'paid' | 'failed' | 'cancelled';
+  payment_provider: string | null;
+  payment_method: string | null;
+  gateway_status: string | null;
+  gateway_order_id: string | null;
+  gateway_amount: number | null;
+  gateway_fee: number | null;
+  gateway_total_payment: number | null;
+  gateway_payment_number: string | null;
+  gateway_expired_at: string | null;
+  gateway_completed_at: string | null;
+  gateway_payload: Record<string, unknown> | null;
   tracking_payload: Record<string, unknown>;
   created_at: string;
   updated_at: string;

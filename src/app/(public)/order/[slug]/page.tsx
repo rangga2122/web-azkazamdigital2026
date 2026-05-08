@@ -21,13 +21,14 @@ async function getCheckoutSettings() {
   const supabase = await createServiceRoleClient();
   const { data } = await supabase
     .from("site_settings")
-    .select("hide_checkout_chrome, checkout_coupon_enabled")
+    .select("hide_checkout_chrome, checkout_coupon_enabled, pakasir_enabled")
     .limit(1)
     .single();
 
   return {
     hide_checkout_chrome: data?.hide_checkout_chrome ?? true,
     checkout_coupon_enabled: data?.checkout_coupon_enabled ?? true,
+    pakasir_enabled: data?.pakasir_enabled ?? false,
   };
 }
 

@@ -141,6 +141,11 @@ export default function AdminSettingsPage() {
         payment_account_number: settings.payment_account_number || null,
         payment_account_name: settings.payment_account_name || null,
         payment_qris_url: settings.payment_qris_url || null,
+        pakasir_enabled: settings.pakasir_enabled ?? false,
+        pakasir_mode: settings.pakasir_mode || "sandbox",
+        pakasir_project_slug: settings.pakasir_project_slug || null,
+        pakasir_api_key: settings.pakasir_api_key || null,
+        pakasir_webhook_url: settings.pakasir_webhook_url || null,
       })
       .eq("id", settings.id);
 
@@ -800,6 +805,48 @@ export default function AdminSettingsPage() {
           <div>
             <label className="block text-sm font-medium text-dark-300 mb-2">URL QRIS</label>
             <input type="text" value={settings.payment_qris_url || ""} onChange={(e) => updateField("payment_qris_url", e.target.value)} className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50" placeholder="/qris.webp" />
+          </div>
+        </div>
+
+        <h3 className="text-white font-semibold text-sm border-b border-dark-700 pb-2 pt-4">Pakasir QRIS</h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-dark-800 border border-dark-700 px-4 py-3 cursor-pointer">
+            <span className="text-sm text-dark-300">Aktifkan Pakasir QRIS</span>
+            <input
+              type="checkbox"
+              checked={Boolean(settings.pakasir_enabled ?? false)}
+              onChange={(e) => updateField("pakasir_enabled", e.target.checked)}
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-sm font-medium text-dark-300 mb-2">Mode Pakasir</label>
+            <select
+              value={settings.pakasir_mode || "sandbox"}
+              onChange={(e) => updateField("pakasir_mode", e.target.value)}
+              className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50"
+            >
+              <option value="sandbox">Sandbox</option>
+              <option value="live">Live</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-dark-300 mb-2">Slug Proyek Pakasir</label>
+            <input type="text" value={settings.pakasir_project_slug || ""} onChange={(e) => updateField("pakasir_project_slug", e.target.value)} className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50" placeholder="azkazamdigital" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-sm font-medium text-dark-300 mb-2">API Key Pakasir</label>
+            <input type="text" value={settings.pakasir_api_key || ""} onChange={(e) => updateField("pakasir_api_key", e.target.value)} className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50" placeholder="API key proyek Pakasir" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-dark-300 mb-2">Webhook URL</label>
+            <input type="text" value={settings.pakasir_webhook_url || ""} onChange={(e) => updateField("pakasir_webhook_url", e.target.value)} className="w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 text-white focus:outline-none focus:border-primary-500/50" placeholder="https://domainanda.com/api/payments/pakasir/webhook" />
           </div>
         </div>
       </div>

@@ -3,20 +3,7 @@ import {
   createServerSupabaseClient,
   createServiceRoleClient,
 } from "@/lib/supabase/server";
-import { sendPaidOrderEmail } from "@/lib/email";
-import { ensureAffiliateAuthAccount } from "@/lib/affiliate-auth";
-import { addLicenseUsers } from "@/lib/license-manager";
-import {
-  ensureWhatsappAutomationLoop,
-  syncOrderWhatsappFollowups,
-} from "@/lib/whatsapp-automation";
-import {
-  buildWhatsappOrderContext,
-  getWhatsappNotificationConfig,
-  resolvePaidAccessEntry,
-  resolvePaidAccessTemplate,
-  sendOrderStatusWhatsappNotification,
-} from "@/lib/whatsapp-notifications";
+import { processOrderPaidTransition } from "@/lib/order-paid";
 
 const VALID_ORDER_STATUSES = ["pending", "paid", "failed", "cancelled"] as const;
 
@@ -75,7 +62,7 @@ export async function POST(
     const serviceSupabase = await createServiceRoleClient();
     const { data: existingOrder, error: existingOrderError } = await serviceSupabase
       .from("orders")
-      .select("id, order_code, status, buyer_name, buyer_email, buyer_whatsapp, product_name, product_id, subtotal, unique_code, total_amount, created_at")
+      .select("id, order_code, status, buyer_name, buyer_email, buyer_whatsapp, product_name, product_id, subtotal, unique_code, total_amount, gateway_total_payment, created_at")
       .eq("id", id)
       .single();
 
@@ -90,7 +77,7 @@ export async function POST(
       .from("orders")
       .update({ status: nextStatus })
       .eq("id", id)
-      .select("id, order_code, status, buyer_name, buyer_email, buyer_whatsapp, product_name, product_id, subtotal, unique_code, total_amount, created_at")
+      .select("id, order_code, status, buyer_name, buyer_email, buyer_whatsapp, product_name, product_id, subtotal, unique_code, total_amount, gateway_total_payment, created_at")
       .single();
 
     if (updateError || !updatedOrder) {
@@ -100,244 +87,26 @@ export async function POST(
       );
     }
 
-    let emailResult: { messageId?: string; skipped?: boolean; error?: string } = {
-      skipped: true,
-    };
-    let whatsappResult: { customerSent?: boolean; skipped?: boolean; error?: string } = {
-      skipped: true,
-    };
-    let licenseResult: {
-      skipped?: boolean;
-      created?: number;
-      extended?: number;
-      reactivated?: number;
-      failed?: number;
-      error?: string;
-    } = {
-      skipped: true,
-    };
-    let paidAccessEmailMessage: string | null = null;
-    let paidAccessWhatsappMessage: string | null = null;
-    let paidAccessEmailSubject: string | null = null;
-
-    const [{ data: settings }, { data: affiliate }, { data: product }] = await Promise.all([
-      serviceSupabase
-        .from("site_settings")
-        .select("site_name, email, whatsapp_number, social_links")
-        .limit(1)
-        .single(),
-      serviceSupabase
-        .from("affiliates")
-        .select("referral_code, user_id")
-        .eq("email", updatedOrder.buyer_email)
-        .maybeSingle(),
-      updatedOrder.product_id
-        ? serviceSupabase
-            .from("products")
-            .select("id, title, slug, thumbnail_url, digital_file_url, demo_url, purchase_url")
-            .eq("id", updatedOrder.product_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
-
     const origin =
       request.nextUrl.origin ||
       process.env.NEXT_PUBLIC_SITE_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||
       "http://localhost:3000";
-    const loginUrl = new URL("/affiliate/login", origin).toString();
-    const registerUrl = new URL("/affiliate/register", origin).toString();
-    const dashboardUrl = new URL("/dashboard", origin).toString();
-    const whatsappConfig = getWhatsappNotificationConfig(
-      settings?.social_links as Record<string, unknown> | null,
-      settings?.whatsapp_number || null
-    );
-
-    if (existingOrder.status !== "paid" && updatedOrder.status === "paid") {
-      const licenseRegistration = normalizeLicenseRegistration(body.licenseRegistration);
-
-      if (licenseRegistration.enabled && licenseRegistration.productEntries.length > 0) {
-        try {
-          const licenseData = await addLicenseUsers({
-            email: updatedOrder.buyer_email,
-            role: licenseRegistration.role,
-            allowedFeatures: licenseRegistration.allowedFeatures,
-            productEntries: licenseRegistration.productEntries,
-          });
-          const results = licenseData.results || [];
-          licenseResult = {
-            skipped: false,
-            created: results.filter((item) => item.status === "success").length,
-            extended: results.filter((item) => item.status === "extended").length,
-            reactivated: results.filter((item) => item.status === "reactivated").length,
-            failed: results.filter((item) => item.status === "error").length,
-          };
-        } catch (error) {
-          console.error("Auto register license users from order error:", error);
-          licenseResult = {
-            skipped: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Registrasi lisensi otomatis gagal.",
-          };
-        }
-      }
-
-      let authAccount = {
-        userId: null as string | null,
-        createdAutomatically: false,
-        defaultPassword: null as string | null,
-      };
-
-      try {
-        authAccount = await ensureAffiliateAuthAccount({
-          supabase: serviceSupabase,
-          email: updatedOrder.buyer_email,
-          fullName: updatedOrder.buyer_name,
-        });
-      } catch (error) {
-        console.error("Auto create affiliate auth account error:", error);
-      }
-
-      const accessEntry = resolvePaidAccessEntry(whatsappConfig, {
-        id: updatedOrder.product_id,
-        title: product?.title || updatedOrder.product_name,
-      });
-      const accessContext = {
-        customerName: updatedOrder.buyer_name,
-        customerEmail: updatedOrder.buyer_email,
-        customerPhone: updatedOrder.buyer_whatsapp,
-        productName: product?.title || updatedOrder.product_name,
-        siteTitle: settings?.site_name || "AzkazamDigital",
-        orderCode: updatedOrder.order_code,
-        orderTotal: new Intl.NumberFormat("id-ID", {
-          style: "currency",
-          currency: "IDR",
-          maximumFractionDigits: 0,
-        }).format(Number(updatedOrder.total_amount || 0)),
-        loginEmail: updatedOrder.buyer_email,
-        loginPassword: authAccount.defaultPassword || "",
-        loginUrl,
-        dashboardUrl,
-        registerUrl,
-        affiliateCode: affiliate?.referral_code || "",
-        productDownloadUrl: product?.digital_file_url || "",
-        productDemoUrl: product?.demo_url || "",
-        productPurchaseUrl: product?.purchase_url || "",
-      };
-      paidAccessEmailMessage = accessEntry?.emailMessage
-        ? resolvePaidAccessTemplate(accessEntry.emailMessage, accessContext)
-        : accessEntry?.whatsappMessage
-        ? resolvePaidAccessTemplate(accessEntry.whatsappMessage, accessContext)
-        : "";
-      paidAccessEmailSubject = accessEntry?.emailSubject
-        ? resolvePaidAccessTemplate(accessEntry.emailSubject, accessContext)
-        : null;
-      paidAccessWhatsappMessage = accessEntry?.whatsappMessage
-        ? resolvePaidAccessTemplate(accessEntry.whatsappMessage, accessContext)
-        : accessEntry?.emailMessage
-        ? resolvePaidAccessTemplate(accessEntry.emailMessage, accessContext)
-        : "";
-
-      try {
-        const info = await sendPaidOrderEmail({
-          buyerName: updatedOrder.buyer_name,
-          buyerEmail: updatedOrder.buyer_email,
-          productName: updatedOrder.product_name,
-          totalAmount: Number(updatedOrder.total_amount || 0),
-          orderCode: updatedOrder.order_code,
-          siteName: settings?.site_name || "AzkazamDigital",
-          supportEmail: settings?.email || null,
-          loginUrl,
-          registerUrl,
-          dashboardUrl,
-          affiliateCode: affiliate?.referral_code || null,
-          loginEmail: updatedOrder.buyer_email,
-          defaultPassword: authAccount.defaultPassword,
-          accessSubject: paidAccessEmailSubject,
-          accountCreatedAutomatically: authAccount.createdAutomatically,
-          accessMessage: paidAccessEmailMessage || null,
-        });
-
-        emailResult = {
-          messageId: info.messageId,
-          skipped: false,
-        };
-      } catch (error) {
-        console.error("Send paid order email error:", error);
-        emailResult = {
-          skipped: false,
-          error: error instanceof Error ? error.message : "Failed to send email.",
-        };
-      }
-    }
-
-    try {
-      const result = await sendOrderStatusWhatsappNotification({
-        config: whatsappConfig,
-        order: buildWhatsappOrderContext({
-          id: updatedOrder.id,
-          orderCode: updatedOrder.order_code,
-          buyerName: updatedOrder.buyer_name,
-          buyerEmail: updatedOrder.buyer_email,
-          buyerWhatsapp: updatedOrder.buyer_whatsapp,
-          productName: updatedOrder.product_name,
-          totalAmount: Number(updatedOrder.total_amount || 0),
-          status: updatedOrder.status,
-          previousStatus: existingOrder.status,
-          createdAt: updatedOrder.created_at,
-          siteName: settings?.site_name || "AzkazamDigital",
-          productImageUrl: product?.thumbnail_url || null,
-        }),
-        origin,
-        accessMessage:
-          updatedOrder.status === "paid" ? paidAccessWhatsappMessage : null,
-      });
-
-      whatsappResult = {
-        ...result,
-        skipped: false,
-      };
-    } catch (error) {
-      console.error("Send order status WhatsApp error:", error);
-      whatsappResult = {
-        skipped: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to send WhatsApp status notification.",
-      };
-    }
-
-    try {
-      await syncOrderWhatsappFollowups({
-        config: whatsappConfig,
-        supabase: serviceSupabase,
-        order: {
-          id: updatedOrder.id,
-          order_code: updatedOrder.order_code,
-          buyer_name: updatedOrder.buyer_name,
-          buyer_email: updatedOrder.buyer_email,
-          buyer_whatsapp: updatedOrder.buyer_whatsapp,
-          product_name: updatedOrder.product_name,
-          product_id: updatedOrder.product_id,
-          total_amount: Number(updatedOrder.total_amount || 0),
-          status: updatedOrder.status,
-          created_at: updatedOrder.created_at,
-        },
-      });
-      ensureWhatsappAutomationLoop();
-    } catch (followupError) {
-      console.error("Sync WhatsApp followups on status change error:", followupError);
-    }
+    const licenseRegistration = normalizeLicenseRegistration(body.licenseRegistration);
+    const transitionResult = await processOrderPaidTransition({
+      serviceSupabase,
+      origin,
+      previousStatus: existingOrder.status,
+      updatedOrder,
+      licenseRegistration,
+    });
 
     return NextResponse.json({
       success: true,
       order: updatedOrder,
-      email: emailResult,
-      whatsapp: whatsappResult,
-      license: licenseResult,
+      email: transitionResult.email,
+      whatsapp: transitionResult.whatsapp,
+      license: transitionResult.license,
     });
   } catch (error) {
     console.error("Admin order status route error:", error);

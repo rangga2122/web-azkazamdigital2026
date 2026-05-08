@@ -548,17 +548,18 @@ function MarkPaidModal({
 }
 
 function buildProductEntries(products: LicenseProduct[], order: Order) {
-  const matchedProductName =
-    products.find(
-      (product) => product.matched_catalog_product_id === order.product_id
-    )?.name || "";
+  const matchedProductNames = new Set(
+    products
+      .filter((product) => product.matched_catalog_product_id === order.product_id)
+      .map((product) => product.name)
+  );
 
   return products.map((product) => ({
     productName: product.name,
-    selected: product.name === matchedProductName,
+    selected: matchedProductNames.has(product.name),
     expiryDate: buildDefaultExpiryDate(product.default_expiry_days),
     maxSessions: "1",
-    badge: product.name === matchedProductName ? "Produk Order" : null,
+    badge: matchedProductNames.has(product.name) ? "Produk Order" : null,
   }));
 }
 

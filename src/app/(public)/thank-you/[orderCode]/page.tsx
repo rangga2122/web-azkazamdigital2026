@@ -20,6 +20,7 @@ type ThankYouSettings = Pick<
   SiteSettings,
   | "site_name"
   | "hide_thank_you_chrome"
+  | "pakasir_enabled"
   | "payment_bank_name"
   | "payment_account_number"
   | "payment_account_name"
@@ -33,7 +34,7 @@ async function getData(orderCode: string) {
     supabase.from("orders").select("*").eq("order_code", orderCode).single(),
     supabase
       .from("site_settings")
-      .select("site_name, hide_thank_you_chrome, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number")
+      .select("site_name, hide_thank_you_chrome, pakasir_enabled, payment_bank_name, payment_account_number, payment_account_name, payment_qris_url, whatsapp_number")
       .limit(1)
       .single(),
   ]);
@@ -43,6 +44,7 @@ async function getData(orderCode: string) {
     settings: {
       site_name: settingsRes.data?.site_name || "AzkazamDigital",
       hide_thank_you_chrome: settingsRes.data?.hide_thank_you_chrome ?? true,
+      pakasir_enabled: settingsRes.data?.pakasir_enabled ?? false,
       payment_bank_name: settingsRes.data?.payment_bank_name || "BCA",
       payment_account_number:
         settingsRes.data?.payment_account_number || "7891502145",
@@ -60,11 +62,15 @@ export default async function ThankYouPage({
 }) {
   const { orderCode } = await params;
   const { order, settings } = await getData(orderCode);
-  const total = Number(order?.total_amount || order?.price || 0);
+  const total = Number(
+    order?.gateway_total_payment || order?.total_amount || order?.price || 0
+  );
   const subtotal = Number(order?.subtotal || (order ? order.price : 0));
   const discount = Number(order?.discount_amount || 0);
   const uniqueCode = Number(order?.unique_code || 0);
+  const gatewayFee = Number(order?.gateway_fee || 0);
   const baseAfterDiscount = Math.max(subtotal - discount, 0);
+  const isPakasirQris = order?.payment_provider === "pakasir";
   const whatsappUrl = buildWhatsappUrl(settings.whatsapp_number, orderCode);
   const qrisImageUrl = order
     ? `/api/qris/order/${order.order_code}`
@@ -102,7 +108,7 @@ export default async function ThankYouPage({
                   {settings.site_name}
                 </div>
                 <div className="mb-3 text-center text-xl font-extrabold text-slate-950">
-                  Bayar dengan QRIS
+                  {isPakasirQris ? "Bayar dengan QRIS Otomatis" : "Bayar dengan QRIS"}
                 </div>
                 <div className="mx-auto mb-4 max-w-[210px] rounded-[8px] bg-white p-2 shadow-sm">
                   <img
@@ -119,59 +125,64 @@ export default async function ThankYouPage({
                     createdAt={order.created_at}
                     status={order.status}
                     expiryMinutes={10}
+                    expiresAt={order.gateway_expired_at}
                   />
                 ) : null}
                 <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-left text-xs leading-relaxed text-amber-800">
                   <strong>Perhatian:</strong>
                   <br />
-                  Pastikan anda hanya melakukan scan qris hanya lewat web resmi azkazamdigital.
+                  {isPakasirQris
+                    ? "QRIS ini dibuat otomatis untuk order Anda. Pastikan pembayaran dilakukan hanya lewat web resmi azkazamdigital."
+                    : "Pastikan anda hanya melakukan scan qris hanya lewat web resmi azkazamdigital."}
                 </div>
               </div>
 
-              <div className="mb-6 rounded-[8px] border border-slate-200 bg-white px-4 py-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-                <div className="mb-1 text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
-                  Alternatif Transfer
-                </div>
-                <div className="mb-4 text-base font-extrabold text-slate-950">
-                  Rekening Bank
-                </div>
-                <div className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Bank
+              {!isPakasirQris && (
+                <div className="mb-6 rounded-[8px] border border-slate-200 bg-white px-4 py-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+                  <div className="mb-1 text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
+                    Alternatif Transfer
+                  </div>
+                  <div className="mb-4 text-base font-extrabold text-slate-950">
+                    Rekening Bank
+                  </div>
+                  <div className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Bank
+                        </div>
+                        <div className="text-base font-extrabold text-blue-700">
+                          {settings.payment_bank_name}
+                        </div>
                       </div>
-                      <div className="text-base font-extrabold text-blue-700">
-                        {settings.payment_bank_name}
+                      <div className="rounded-full bg-blue-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">
+                        Manual
                       </div>
                     </div>
-                    <div className="rounded-full bg-blue-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">
-                      Manual
+                    <div className="border-t border-slate-200 pt-3">
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Nomor Rekening
+                      </div>
+                      <div className="flex items-center justify-between gap-2 rounded-[8px] bg-white px-3 py-3 shadow-sm">
+                        <div className="text-lg font-extrabold tracking-wide text-slate-950">
+                          {settings.payment_account_number}
+                        </div>
+                        <CopyAccountButton
+                          accountNumber={settings.payment_account_number}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-3 border-t border-slate-200 pt-3">
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Atas Nama
+                      </div>
+                      <div className="text-sm font-semibold text-slate-700">
+                        {settings.payment_account_name}
+                      </div>
                     </div>
                   </div>
-                  <div className="border-t border-slate-200 pt-3">
-                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Nomor Rekening
-                    </div>
-                    <div className="flex items-center justify-between gap-2 rounded-[8px] bg-white px-3 py-3 shadow-sm">
-                      <div className="text-lg font-extrabold tracking-wide text-slate-950">
-                        {settings.payment_account_number}
-                      </div>
-                      <CopyAccountButton
-                        accountNumber={settings.payment_account_number}
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-3 border-t border-slate-200 pt-3">
-                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Atas Nama
-                    </div>
-                    <div className="text-sm font-semibold text-slate-700">
-                      {settings.payment_account_name}
-                    </div>
-                  </div>
                 </div>
-              </div>
+              )}
 
               {subtotal > 0 && (
                 <div className="mb-6 rounded-[8px] border border-blue-500 bg-white px-4 py-4 text-sm">
@@ -198,10 +209,20 @@ export default async function ThankYouPage({
                       {uniqueCode > 0 ? `+${formatPrice(uniqueCode)}` : "-"}
                     </span>
                   </div>
+                  {gatewayFee > 0 && (
+                    <div className="flex justify-between gap-3 border-b border-slate-200 py-3">
+                      <span className="text-slate-600">Biaya QRIS</span>
+                      <span className="font-semibold text-slate-900">
+                        +{formatPrice(gatewayFee)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between gap-3 pt-3">
                     <span className="font-bold text-slate-950">Total</span>
                     <span className="font-extrabold text-slate-950">
-                      {formatPrice(uniqueCode > 0 ? total : baseAfterDiscount)}
+                      {formatPrice(
+                        gatewayFee > 0 || uniqueCode > 0 ? total : baseAfterDiscount
+                      )}
                     </span>
                   </div>
                 </div>

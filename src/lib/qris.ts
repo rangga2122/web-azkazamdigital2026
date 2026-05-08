@@ -39,6 +39,20 @@ export async function createDynamicQrisSvgFromSource(
   return svg;
 }
 
+export async function createQrisSvgFromPayload(payload: string) {
+  const normalizedPayload = String(payload || "").trim();
+  if (!normalizedPayload) {
+    throw new Error("Payload QRIS kosong.");
+  }
+
+  return QRCode.toString(normalizedPayload, {
+    type: "svg",
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 512,
+  });
+}
+
 export async function decodeQrisPayloadFromImageUrl(sourceUrl: string) {
   const normalizedSource = sourceUrl.trim();
   if (!normalizedSource) {
