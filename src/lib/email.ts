@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import nodemailer from "nodemailer";
 import { createDynamicQrisSvgFromSource } from "@/lib/qris";
+import { getSiteUrl } from "@/lib/site-url";
 import { formatPrice } from "@/lib/utils";
 
 type BaseEmailPayload = {
@@ -82,12 +83,7 @@ function absoluteUrl(url: string | null) {
   if (!url) return null;
   if (/^https?:\/\//i.test(url)) return url;
 
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000";
-
-  return new URL(url, base).toString();
+  return new URL(url, getSiteUrl()).toString();
 }
 
 function formatMultilineHtml(value: string) {

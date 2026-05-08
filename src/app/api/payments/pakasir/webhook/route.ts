@@ -6,6 +6,7 @@ import {
   resolvePakasirConfig,
 } from "@/lib/pakasir";
 import { processOrderPaidTransition } from "@/lib/order-paid";
+import { resolveRequestOrigin } from "@/lib/site-url";
 
 export async function POST(request: NextRequest) {
   try {
@@ -97,11 +98,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Gagal memperbarui order." }, { status: 400 });
     }
 
-    const origin =
-      request.nextUrl.origin ||
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "http://localhost:3000";
+    const origin = resolveRequestOrigin({
+      headers: request.headers,
+      nextUrlOrigin: request.nextUrl.origin,
+    });
 
     await processOrderPaidTransition({
       serviceSupabase,

@@ -4,6 +4,7 @@ import {
   createServiceRoleClient,
 } from "@/lib/supabase/server";
 import { processOrderPaidTransition } from "@/lib/order-paid";
+import { resolveRequestOrigin } from "@/lib/site-url";
 
 const VALID_ORDER_STATUSES = ["pending", "paid", "failed", "cancelled"] as const;
 
@@ -87,11 +88,10 @@ export async function POST(
       );
     }
 
-    const origin =
-      request.nextUrl.origin ||
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "http://localhost:3000";
+    const origin = resolveRequestOrigin({
+      headers: request.headers,
+      nextUrlOrigin: request.nextUrl.origin,
+    });
     const licenseRegistration = normalizeLicenseRegistration(body.licenseRegistration);
     const transitionResult = await processOrderPaidTransition({
       serviceSupabase,

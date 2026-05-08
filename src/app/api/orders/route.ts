@@ -13,6 +13,7 @@ import {
   generateOrderCode,
   normalizeUniquePaymentCode,
 } from "@/lib/utils";
+import { resolveRequestOrigin } from "@/lib/site-url";
 import {
   ensureWhatsappAutomationLoop,
   syncOrderWhatsappFollowups,
@@ -419,12 +420,10 @@ function buildWhatsappUrl(phone: string | null, orderCode: string) {
 }
 
 function getRequestOrigin(request: NextRequest) {
-  return (
-    request.nextUrl.origin ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000"
-  );
+  return resolveRequestOrigin({
+    headers: request.headers,
+    nextUrlOrigin: request.nextUrl.origin,
+  });
 }
 
 async function runPostOrderSideEffects(input: PostOrderSideEffectsInput) {

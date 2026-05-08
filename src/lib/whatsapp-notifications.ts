@@ -1,4 +1,5 @@
 import { sanitizePublicMediaUrl } from "@/lib/legacy-media";
+import { getSiteUrl } from "@/lib/site-url";
 import type { Product } from "@/types";
 
 export type WhatsappStatus = "pending" | "paid" | "failed" | "cancelled";
@@ -811,11 +812,7 @@ function stripTrailingSlash(value: string) {
 }
 
 function buildOrderInvoiceUrl(orderCode: string, origin?: string | null) {
-  const base =
-    String(origin || "").trim() ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000";
+  const base = String(origin || "").trim() || getSiteUrl();
 
   try {
     return new URL(`/thank-you/${orderCode}`, base).toString();
