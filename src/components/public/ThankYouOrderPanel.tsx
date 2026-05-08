@@ -184,7 +184,7 @@ export function ThankYouOrderPanel({
                 )}
               </div>
 
-              {!isPakasirQris && (
+              {!isPaid && (
                 <div className="mb-6 rounded-[8px] border border-slate-200 bg-white px-4 py-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
                   <div className="mb-1 text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
                     Alternatif Transfer
