@@ -47,9 +47,7 @@ export function OrderFormClient({
   const previewDiscount = appliedCoupon?.discount_amount || 0;
   const previewBaseTotal = Math.max(product.price - previewDiscount, 0);
   const previewTotal = previewBaseTotal + previewUniqueCode;
-  const paymentMethodLabel = settings.pakasir_enabled
-    ? "QRIS Otomatis"
-    : "Bank Transfer/QRIS";
+  const paymentMethodLabel = "QRIS/Transfer";
 
   useEffect(() => {
     trackPageView({ type: "checkout", productId: product.id });
