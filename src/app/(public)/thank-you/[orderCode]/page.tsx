@@ -71,6 +71,7 @@ export default async function ThankYouPage({
   const gatewayFee = Number(order?.gateway_fee || 0);
   const baseAfterDiscount = Math.max(subtotal - discount, 0);
   const isPakasirQris = order?.payment_provider === "pakasir";
+  const isPaid = order?.status === "paid";
   const whatsappUrl = buildWhatsappUrl(settings.whatsapp_number, orderCode);
   const qrisImageUrl = order
     ? `/api/qris/order/${order.order_code}`
@@ -82,6 +83,7 @@ export default async function ThankYouPage({
       data-hide-public-chrome={settings.hide_thank_you_chrome ? "true" : undefined}
     >
       {settings.hide_thank_you_chrome && <HidePublicChromeStyle />}
+      <PaidStatusAnimationStyle />
       {order && <ThankYouClient order={order} />}
 
       <div className="mx-auto w-full max-w-md px-4">
@@ -107,34 +109,65 @@ export default async function ThankYouPage({
                 <div className="mb-3 text-center text-sm font-extrabold uppercase tracking-wide text-slate-700">
                   {settings.site_name}
                 </div>
-                <div className="mb-3 text-center text-xl font-extrabold text-slate-950">
-                  {isPakasirQris ? "Bayar dengan QRIS Otomatis" : "Bayar dengan QRIS"}
-                </div>
-                <div className="mx-auto mb-4 max-w-[210px] rounded-[8px] bg-white p-2 shadow-sm">
-                  <img
-                    src={qrisImageUrl}
-                    alt="QRIS pembayaran"
-                    className="h-auto w-full rounded-[6px]"
-                    loading="eager"
-                    decoding="sync"
-                    fetchPriority="high"
-                  />
-                </div>
-                {order ? (
-                  <PaymentExpiryCountdown
-                    createdAt={order.created_at}
-                    status={order.status}
-                    expiryMinutes={10}
-                    expiresAt={order.gateway_expired_at}
-                  />
-                ) : null}
-                <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-left text-xs leading-relaxed text-amber-800">
-                  <strong>Perhatian:</strong>
-                  <br />
-                  {isPakasirQris
-                    ? "QRIS ini dibuat otomatis untuk order Anda. Pastikan pembayaran dilakukan hanya lewat web resmi azkazamdigital."
-                    : "Pastikan anda hanya melakukan scan qris hanya lewat web resmi azkazamdigital."}
-                </div>
+                {isPaid ? (
+                  <div className="rounded-[18px] border border-emerald-200 bg-gradient-to-b from-emerald-50 to-white px-5 py-6 text-center shadow-[0_16px_36px_rgba(16,185,129,0.14)]">
+                    <div className="mx-auto flex h-20 w-20 paid-status-pop items-center justify-center rounded-full bg-emerald-500 shadow-[0_12px_28px_rgba(16,185,129,0.35)]">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-10 w-10 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M5 12.5l4.2 4.2L19 7.5" />
+                      </svg>
+                    </div>
+                    <div className="mt-4 inline-flex items-center rounded-full border border-emerald-200 bg-white px-4 py-1.5 text-xs font-extrabold uppercase tracking-[0.28em] text-emerald-600">
+                      Pembayaran Berhasil
+                    </div>
+                    <div className="mt-4 text-2xl font-black text-emerald-600">
+                      Sudah Terbayar
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-slate-700">
+                      Pembayaran untuk order ini sudah kami terima dan tervalidasi.
+                      Anda bisa tenang, pesanan sedang atau sudah diproses.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-3 text-center text-xl font-extrabold text-slate-950">
+                      {isPakasirQris ? "Bayar dengan QRIS Otomatis" : "Bayar dengan QRIS"}
+                    </div>
+                    <div className="mx-auto mb-4 max-w-[210px] rounded-[8px] bg-white p-2 shadow-sm">
+                      <img
+                        src={qrisImageUrl}
+                        alt="QRIS pembayaran"
+                        className="h-auto w-full rounded-[6px]"
+                        loading="eager"
+                        decoding="sync"
+                        fetchPriority="high"
+                      />
+                    </div>
+                    {order ? (
+                      <PaymentExpiryCountdown
+                        createdAt={order.created_at}
+                        status={order.status}
+                        expiryMinutes={10}
+                        expiresAt={order.gateway_expired_at}
+                      />
+                    ) : null}
+                    <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-left text-xs leading-relaxed text-amber-800">
+                      <strong>Perhatian:</strong>
+                      <br />
+                      {isPakasirQris
+                        ? "QRIS ini dibuat otomatis untuk order Anda. Pastikan pembayaran dilakukan hanya lewat web resmi azkazamdigital."
+                        : "Pastikan anda hanya melakukan scan qris hanya lewat web resmi azkazamdigital."}
+                    </div>
+                  </>
+                )}
               </div>
 
               {!isPakasirQris && (
@@ -256,6 +289,24 @@ function HidePublicChromeStyle() {
         body:has([data-hide-public-chrome="true"]) [data-public-header],
         body:has([data-hide-public-chrome="true"]) [data-public-footer] {
           display: none !important;
+        }
+      `}
+    </style>
+  );
+}
+
+function PaidStatusAnimationStyle() {
+  return (
+    <style>
+      {`
+        @keyframes paid-status-pop {
+          0% { transform: scale(0.88); box-shadow: 0 0 0 0 rgba(16,185,129,0.30); }
+          50% { transform: scale(1); box-shadow: 0 0 0 16px rgba(16,185,129,0); }
+          100% { transform: scale(0.94); box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+        }
+
+        .paid-status-pop {
+          animation: paid-status-pop 1.8s ease-in-out infinite;
         }
       `}
     </style>
