@@ -310,11 +310,6 @@ export function OrderFormClient({
               {paymentMethodLabel}
             </span>
           </label>
-          <p className="mt-2 text-sm text-slate-600">
-            {settings.pakasir_enabled
-              ? "QRIS dibuat otomatis saat pesanan dikirim, jadi Anda bisa langsung bayar dari halaman terima kasih."
-              : "Anda bisa melanjutkan pembayaran lewat QRIS atau transfer manual seperti biasa."}
-          </p>
         </div>
 
         <button
