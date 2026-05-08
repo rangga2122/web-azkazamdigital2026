@@ -1,6 +1,7 @@
 import { sendPaidOrderEmail } from "@/lib/email";
 import { ensureAffiliateAuthAccount } from "@/lib/affiliate-auth";
 import { addLicenseUsers } from "@/lib/license-manager";
+import { loadLicenseProductsWithCatalogMatches } from "@/lib/license-product-sync";
 import {
   ensureWhatsappAutomationLoop,
   syncOrderWhatsappFollowups,
@@ -114,7 +115,9 @@ export async function processOrderPaidTransition(input: {
   );
 
   if (input.previousStatus !== "paid" && input.updatedOrder.status === "paid") {
-    const licenseRegistration = input.licenseRegistration;
+    const licenseRegistration =
+      input.licenseRegistration ||
+      (await resolveAutomaticLicenseRegistration(input.updatedOrder));
 
     if (licenseRegistration?.enabled && licenseRegistration.productEntries.length > 0) {
       try {
@@ -317,4 +320,38 @@ function countLicenseStatuses(
   status: LicenseProvisionResultStatus
 ) {
   return results.filter((item) => item.status === status).length;
+}
+
+async function resolveAutomaticLicenseRegistration(
+  order: Pick<PaidTransitionOrder, "product_id">
+): Promise<LicenseRegistrationPayload | null> {
+  if (!order.product_id) {
+    return null;
+  }
+
+  try {
+    const licenseProducts = await loadLicenseProductsWithCatalogMatches();
+    const matchedProducts = licenseProducts.filter(
+      (product) =>
+        product.is_active && product.matched_catalog_product_id === order.product_id
+    );
+
+    if (matchedProducts.length === 0) {
+      return null;
+    }
+
+    return {
+      enabled: true,
+      role: "user",
+      allowedFeatures: [],
+      productEntries: matchedProducts.map((product) => ({
+        productName: product.name,
+        expiryDate: null,
+        maxSessions: null,
+      })),
+    };
+  } catch (error) {
+    console.error("Resolve automatic license registration error:", error);
+    return null;
+  }
 }
