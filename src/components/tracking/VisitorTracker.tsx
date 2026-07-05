@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 const SESSION_KEY = "az_visitor_sid";
@@ -49,7 +49,7 @@ function parseUserAgent(ua: string) {
   return { deviceType, os, browser };
 }
 
-export function VisitorTracker() {
+function VisitorTrackerInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const lastSentPathRef = useRef<string>("");
@@ -107,7 +107,6 @@ export function VisitorTracker() {
 
     const handleBeforeUnload = () => {
       if (previousViewStart) {
-        const finalDuration = Math.round((Date.now() - previousViewStart) / 1000);
         sendBeacon();
       }
     };
@@ -118,3 +117,12 @@ export function VisitorTracker() {
 
   return null;
 }
+
+export function VisitorTracker() {
+  return (
+    <Suspense fallback={null}>
+      <VisitorTrackerInner />
+    </Suspense>
+  );
+}
+
