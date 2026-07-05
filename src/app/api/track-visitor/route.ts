@@ -2,9 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 function getClientIp(request: NextRequest): string {
+  // Cloudflare passes the real visitor IP in CF-Connecting-IP
+  const cfIp = request.headers.get("cf-connecting-ip");
+  if (cfIp) {
+    return cfIp.trim();
+  }
+  // Fallback: X-Forwarded-For may contain Cloudflare edge IP + real IP
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
-    return forwarded.split(",")[0].trim();
+    // X-Forwarded-For can be a chain: client, proxy1, proxy2
+    // The leftmost *public* IP is usually the real client behind Cloudflare
+    const ips = forwarded.split(",").map((ip) => ip.trim()).filter(Boolean);
+    for (const ip of ips) {
+      if (!isPrivateOrLocalIp(ip)) {
+        return ip;
+      }
+    }
+    return ips[0] || "unknown";
   }
   return request.headers.get("x-real-ip") || request.headers.get("x-vercel-forwarded-for") || "unknown";
 }
