@@ -14,6 +14,70 @@ begin
 end;
 $$ language plpgsql;
 
+create or replace function public.upsert_visitor_session(
+  p_session_id text,
+  p_ip_address text,
+  p_country_code text,
+  p_country_name text,
+  p_city text,
+  p_region text,
+  p_user_agent text,
+  p_device_type text,
+  p_os text,
+  p_browser text,
+  p_referrer text,
+  p_landing_page text,
+  p_utm_source text,
+  p_utm_medium text,
+  p_utm_campaign text,
+  p_screen_width int,
+  p_screen_height int,
+  p_language text
+) returns void as $$
+begin
+  insert into public.visitor_sessions (
+    session_id, ip_address, country_code, country_name, city, region,
+    user_agent, device_type, os, browser, referrer, landing_page,
+    utm_source, utm_medium, utm_campaign, screen_width, screen_height, language,
+    page_views_count, first_seen_at, last_seen_at
+  ) values (
+    p_session_id, p_ip_address, p_country_code, p_country_name, p_city, p_region,
+    p_user_agent, p_device_type, p_os, p_browser, p_referrer, p_landing_page,
+    p_utm_source, p_utm_medium, p_utm_campaign, p_screen_width, p_screen_height, p_language,
+    1, now(), now()
+  )
+  on conflict (session_id) do update set
+    ip_address = coalesce(excluded.ip_address, public.visitor_sessions.ip_address),
+    country_code = coalesce(excluded.country_code, public.visitor_sessions.country_code),
+    country_name = coalesce(excluded.country_name, public.visitor_sessions.country_name),
+    city = coalesce(excluded.city, public.visitor_sessions.city),
+    region = coalesce(excluded.region, public.visitor_sessions.region),
+    user_agent = coalesce(excluded.user_agent, public.visitor_sessions.user_agent),
+    device_type = coalesce(excluded.device_type, public.visitor_sessions.device_type),
+    os = coalesce(excluded.os, public.visitor_sessions.os),
+    browser = coalesce(excluded.browser, public.visitor_sessions.browser),
+    referrer = coalesce(excluded.referrer, public.visitor_sessions.referrer),
+    landing_page = coalesce(excluded.landing_page, public.visitor_sessions.landing_page),
+    utm_source = coalesce(excluded.utm_source, public.visitor_sessions.utm_source),
+    utm_medium = coalesce(excluded.utm_medium, public.visitor_sessions.utm_medium),
+    utm_campaign = coalesce(excluded.utm_campaign, public.visitor_sessions.utm_campaign),
+    screen_width = coalesce(excluded.screen_width, public.visitor_sessions.screen_width),
+    screen_height = coalesce(excluded.screen_height, public.visitor_sessions.screen_height),
+    language = coalesce(excluded.language, public.visitor_sessions.language),
+    page_views_count = public.visitor_sessions.page_views_count + 1,
+    last_seen_at = now(),
+    updated_at = now();
+end;
+$$ language plpgsql;
+
+create or replace function public.cleanup_old_visitor_data()
+returns void as $$
+begin
+  delete from public.page_views where created_at < now() - interval '30 days';
+  delete from public.visitor_sessions where last_seen_at < now() - interval '30 days';
+end;
+$$ language plpgsql;
+
 create table public.users_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
@@ -245,6 +309,53 @@ create table public.affiliate_clicks (
   user_agent text,
   created_at timestamptz not null default now()
 );
+
+create table public.visitor_sessions (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null unique,
+  ip_address text,
+  country_code text,
+  country_name text,
+  city text,
+  region text,
+  user_agent text,
+  device_type text,
+  os text,
+  browser text,
+  referrer text,
+  landing_page text,
+  utm_source text,
+  utm_medium text,
+  utm_campaign text,
+  screen_width int,
+  screen_height int,
+  language text,
+  page_views_count int not null default 1,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index visitor_sessions_session_id_idx on public.visitor_sessions(session_id);
+create index visitor_sessions_ip_address_idx on public.visitor_sessions(ip_address);
+create index visitor_sessions_created_at_idx on public.visitor_sessions(created_at desc);
+create index visitor_sessions_last_seen_idx on public.visitor_sessions(last_seen_at desc);
+
+create table public.page_views (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null references public.visitor_sessions(session_id) on delete cascade,
+  path text not null,
+  title text,
+  query_params text,
+  referrer text,
+  duration_seconds int,
+  created_at timestamptz not null default now()
+);
+
+create index page_views_session_id_idx on public.page_views(session_id);
+create index page_views_created_at_idx on public.page_views(created_at desc);
+create index page_views_path_idx on public.page_views(path);
 
 create table public.orders (
   id uuid primary key default gen_random_uuid(),

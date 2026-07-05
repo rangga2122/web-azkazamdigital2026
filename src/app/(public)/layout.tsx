@@ -1,6 +1,7 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { PublicChromeController } from "@/components/layout/PublicChromeController";
+import { VisitorTracker } from "@/components/tracking/VisitorTracker";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { resolveSiteNavLinks } from "@/lib/site-navigation";
 import { unstable_cache } from "next/cache";
@@ -57,6 +58,7 @@ export default async function PublicLayout({
 
   return (
     <>
+      <VisitorTracker />
       <PublicChromeController />
       <style>
         {`
