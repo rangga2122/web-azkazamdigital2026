@@ -6,7 +6,7 @@ function getClientIp(request: NextRequest): string {
   if (forwarded) {
     return forwarded.split(",")[0].trim();
   }
-  return request.headers.get("x-real-ip") || request.headers.get("x-vercel-forwarded-for") || request.ip || "unknown";
+  return request.headers.get("x-real-ip") || request.headers.get("x-vercel-forwarded-for") || "unknown";
 }
 
 function isPrivateOrLocalIp(ip: string): boolean {
