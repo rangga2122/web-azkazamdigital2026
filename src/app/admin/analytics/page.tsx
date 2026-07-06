@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
 import { FaUsers, FaEye, FaMousePointer, FaGlobe, FaDesktop, FaMobileAlt, FaTabletAlt } from "react-icons/fa";
 
 type VisitorSession = {
@@ -51,13 +50,39 @@ const PERIOD_OPTIONS = [
   { value: "30", label: "30 hari terakhir" },
 ];
 
+// Raw fetch helper — bypass supabase-js yang bug di v2.104.0
+async function fetchTable<T>(
+  table: string,
+  filterColumn: string,
+  sinceIso: string,
+  orderColumn: string,
+  limit: number
+): Promise<T[]> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const url = `${supabaseUrl}/rest/v1/${table}?select=*&${filterColumn}=gte.${encodeURIComponent(sinceIso)}&order=${orderColumn}.desc&limit=${limit}`;
+  
+  const resp = await fetch(url, {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      "Content-Type": "application/json",
+    },
+  });
+  
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${text}`);
+  }
+  
+  return resp.json() as Promise<T[]>;
+}
+
 export default function AnalyticsPage() {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState("30");
   const [error, setError] = useState<string | null>(null);
-
-  const supabase = createClient();
 
   const loadData = async () => {
     setLoading(true);
@@ -67,26 +92,15 @@ export default function AnalyticsPage() {
       since.setDate(since.getDate() - Number(days));
       const sinceIso = since.toISOString();
 
-      const { data: sessions, error: sessionsError } = await supabase
-        .from("visitor_sessions")
-        .select("*")
-        .gte("last_seen_at", sinceIso)
-        .order("last_seen_at", { ascending: false })
-        .limit(500);
+      const sessions = await fetchTable<VisitorSession>(
+        "visitor_sessions", "last_seen_at", sinceIso, "last_seen_at", 500
+      );
+      const pageViews = await fetchTable<PageView>(
+        "page_views", "created_at", sinceIso, "created_at", 1000
+      );
 
-      if (sessionsError) throw sessionsError;
-
-      const { data: pageViews, error: viewsError } = await supabase
-        .from("page_views")
-        .select("*")
-        .gte("created_at", sinceIso)
-        .order("created_at", { ascending: false })
-        .limit(1000);
-
-      if (viewsError) throw viewsError;
-
-      const sessionList = (sessions || []) as VisitorSession[];
-      const viewList = (pageViews || []) as PageView[];
+      const sessionList = sessions || [];
+      const viewList = pageViews || [];
 
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
