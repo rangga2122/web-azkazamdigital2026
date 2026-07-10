@@ -175,6 +175,6 @@ export async function loadLicenseProductsWithCatalogMatches() {
   );
 }
 
-function normalizeLicenseProductName(value: string | null | undefined) {
+export function normalizeLicenseProductName(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
 }

@@ -1,7 +1,10 @@
 import { sendPaidOrderEmail } from "@/lib/email";
 import { ensureAffiliateAuthAccount } from "@/lib/affiliate-auth";
 import { addLicenseUsers } from "@/lib/license-manager";
-import { loadLicenseProductsWithCatalogMatches } from "@/lib/license-product-sync";
+import {
+  loadLicenseProductsWithCatalogMatches,
+  normalizeLicenseProductName,
+} from "@/lib/license-product-sync";
 import {
   ensureWhatsappAutomationLoop,
   syncOrderWhatsappFollowups,
@@ -323,22 +326,61 @@ function countLicenseStatuses(
 }
 
 async function resolveAutomaticLicenseRegistration(
-  order: Pick<PaidTransitionOrder, "product_id">
+  order: Pick<PaidTransitionOrder, "product_id" | "product_name" | "order_code">
 ): Promise<LicenseRegistrationPayload | null> {
   if (!order.product_id) {
+    console.log(
+      `[license-auto] Order ${order.order_code}: skipped, no product_id`
+    );
     return null;
   }
 
   try {
     const licenseProducts = await loadLicenseProductsWithCatalogMatches();
-    const matchedProducts = licenseProducts.filter(
+
+    if (licenseProducts.length === 0) {
+      console.log(
+        `[license-auto] Order ${order.order_code}: no license products available`
+      );
+      return null;
+    }
+
+    // Strategy 1: Match by catalog sync mapping (exact product_id)
+    const matchedBySync = licenseProducts.filter(
       (product) =>
         product.is_active && product.matched_catalog_product_id === order.product_id
     );
 
+    let matchedProducts = matchedBySync;
+
+    // Strategy 2: Fallback — match by normalized product name
+    if (matchedBySync.length === 0 && order.product_name) {
+      const normalizedOrderName = normalizeLicenseProductName(order.product_name);
+      if (normalizedOrderName) {
+        const matchedByName = licenseProducts.filter(
+          (product) =>
+            product.is_active &&
+            normalizeLicenseProductName(product.name) === normalizedOrderName
+        );
+        if (matchedByName.length > 0) {
+          console.log(
+            `[license-auto] Order ${order.order_code}: matched by name "${order.product_name}" → ${matchedByName.map((p) => p.name).join(", ")}`
+          );
+          matchedProducts = matchedByName;
+        }
+      }
+    }
+
     if (matchedProducts.length === 0) {
+      console.log(
+        `[license-auto] Order ${order.order_code}: no license product match for product_id=${order.product_id} name="${order.product_name}"`
+      );
       return null;
     }
+
+    console.log(
+      `[license-auto] Order ${order.order_code}: auto-registering license for ${matchedProducts.map((p) => p.name).join(", ")}`
+    );
 
     return {
       enabled: true,
@@ -351,7 +393,10 @@ async function resolveAutomaticLicenseRegistration(
       })),
     };
   } catch (error) {
-    console.error("Resolve automatic license registration error:", error);
+    console.error(
+      `[license-auto] Order ${order.order_code}: resolve error:`,
+      error
+    );
     return null;
   }
 }
