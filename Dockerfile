@@ -8,6 +8,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package*.json ./
 RUN npm ci
 
+# Copy env file so NEXT_PUBLIC_* vars are available at build time
+# (Next.js bakes NEXT_PUBLIC_* into JS bundles during build)
+COPY .env .env
+
 COPY . .
 
 # Build Next.js production with standalone output
