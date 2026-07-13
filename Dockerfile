@@ -6,7 +6,7 @@ ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 COPY . .
 
