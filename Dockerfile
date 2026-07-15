@@ -1,20 +1,18 @@
 FROM node:22-slim AS builder
 WORKDIR /app
 
-# Container Coolify dapat memory 3GB, sisakan untuk buildkit
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package*.json ./
 RUN npm ci
 
-# Copy env file so NEXT_PUBLIC_* vars are available at build time
-# (Next.js bakes NEXT_PUBLIC_* into JS bundles during build)
-COPY .env .env
+# Generate .env from build-time env vars (passed by Coolify)
+# This allows NEXT_PUBLIC_* vars to be baked into JS bundle
+RUN printenv | grep -E '^(NEXT_PUBLIC_|SUPABASE_|VITE_|SMTP_|WHATSAPP_|LICENSE_|UPLOAD_|NVIDIA_)' > .env || true
 
 COPY . .
 
-# Build Next.js production with standalone output
 RUN npm run build
 
 # ---- Runtime stage ----
@@ -31,5 +29,4 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 EXPOSE 3000
-# next.config.ts uses output:standalone — must use node .next/standalone/server.js, NOT "next start"
 CMD ["node", "server.js"]
