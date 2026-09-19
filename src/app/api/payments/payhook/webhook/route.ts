@@ -133,7 +133,37 @@ export async function POST(request: NextRequest) {
     });
 
     if (!matchedOrder) {
-      console.log(`[payhook] No matching order for amount=${amount}. Pending orders: ${pendingOrders.map(o => o.total_amount).join(", ")}`);
+      console.log(`[payhook] No matching order for amount=${amount}. Forwarding to RupaAI webhook…`);
+      // RupaAI (rupaai2-app) also receives the same PayHook notifications —
+      // forward unmatched amounts so RupaAI credit/subscription orders settle.
+      try {
+        const rupaaiSecret = process.env.PAYHOOK_WEBHOOK_SECRET?.trim() || "";
+        const origin = resolveRequestOrigin({
+          headers: request.headers,
+          nextUrlOrigin: request.nextUrl.origin,
+        });
+        const rupaaiBase = (origin.includes("azkazamdigital.com")
+          ? "http://rupaai2-app:3000"
+          : "http://127.0.0.1:3001");
+        const fwd = await fetch(`${rupaaiBase}/api/credits/payhook/webhook`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${rupaaiSecret}`,
+          },
+          body: rawBody,
+          signal: AbortSignal.timeout(10_000),
+        });
+        const fwdResult = await fwd.json().catch(() => null);
+        console.log(
+          `[payhook] RupaAI forward status=${fwd.status} matched=${fwdResult?.matched ?? "?"} order=${fwdResult?.order_code ?? "-"}`
+        );
+      } catch (fwdError) {
+        console.warn(
+          "[payhook] RupaAI forward failed:",
+          fwdError instanceof Error ? fwdError.message : fwdError
+        );
+      }
       return NextResponse.json({
         success: true,
         matched: false,
