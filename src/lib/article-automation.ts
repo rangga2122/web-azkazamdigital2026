@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Article, ArticleAutomationSettings } from "@/types";
 import { generateArticleDraft } from "@/lib/article-ai";
+import { generateAndSaveCoverImage } from "@/lib/cosmic-image";
 import {
   DEFAULT_ARTICLE_AUTOMATION_SETTINGS,
   parseTopicQueue,
@@ -72,6 +73,12 @@ export async function generateAndStoreArticle(options: {
     options.status || (settings.auto_publish ? "published" : "draft");
   const now = new Date().toISOString();
 
+  // Generate gambar cover via Cosmic MCP SEBELUM insert (gagal gambar tidak menggagalkan artikel)
+  const coverImage = await generateAndSaveCoverImage({
+    title: draft.title,
+    slug,
+  });
+
   const { data, error } = await serviceSupabase
     .from("articles")
     .insert({
@@ -79,7 +86,7 @@ export async function generateAndStoreArticle(options: {
       slug,
       excerpt: draft.excerpt,
       content_html: draft.contentHtml,
-      cover_image: null,
+      cover_image: coverImage,
       status,
       seo_title: draft.seoTitle,
       seo_description: draft.seoDescription,

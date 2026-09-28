@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminCollectionToolbar } from "@/components/admin/AdminCollectionToolbar";
 import {
   compareAdminDates,
@@ -8,12 +8,39 @@ import {
 } from "@/lib/admin-collections";
 import { createClient } from "@/lib/supabase/client";
 import { formatPrice, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { FaTimes, FaTrash } from "react-icons/fa";
+import { FaTimes, FaTrash, FaWhatsapp, FaSyncAlt } from "react-icons/fa";
 import toast from "react-hot-toast";
 import type { Order } from "@/types";
 import type { LicenseProduct } from "@/types/license-manager";
 
 type OrderStatus = Order["status"];
+
+/** Ringkasan notifikasi WA terakhir sebuah order (dari whatsapp_notification_logs). */
+type WhatsappOrderSummary = {
+  order_code: string;
+  last_status: "sent" | "failed";
+  last_type: "order_created" | "status_update";
+  last_error: string | null;
+  last_at: string;
+  last_sender: string;
+  needs_resend: boolean;
+  sent_count: number;
+  failed_count: number;
+  last_message: string | null;
+  last_phone: string | null;
+};
+
+type WhatsappLogRow = {
+  id: string;
+  type: "order_created" | "status_update";
+  status: "sent" | "failed";
+  phone: string | null;
+  message: string | null;
+  error: string | null;
+  sender: string;
+  created_at: string;
+};
+
 
 type LicenseRegistrationPayload = {
   enabled: boolean;
@@ -39,12 +66,36 @@ export default function AdminOrdersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [modal, setModal] = useState<ModalState>({ type: "none" });
+  // Status notifikasi WA per order (dari log server) + order yang sedang dikirim ulang
+  const [waSummaries, setWaSummaries] = useState<Record<string, WhatsappOrderSummary>>({});
+  const [waSending, setWaSending] = useState<string | null>(null);
+  const [waDetail, setWaDetail] = useState<{ order: Order; logs: WhatsappLogRow[] } | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
     const { data } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
-    setOrders((data || []) as Order[]);
+    const rows = (data || []) as Order[];
+    setOrders(rows);
     setLoading(false);
+
+    // Status WA diambil dari server (log kirim), bukan dari browser.
+    if (rows.length > 0) {
+      const codes = rows.map((order) => order.order_code).join(",");
+      try {
+        const response = await fetch(
+          `/api/admin/whatsapp/order-notifications?codes=${encodeURIComponent(codes)}`,
+          { cache: "no-store" }
+        );
+        const payload = (await response.json()) as {
+          summaries?: Record<string, WhatsappOrderSummary>;
+        };
+        if (response.ok && payload.summaries) {
+          setWaSummaries(payload.summaries);
+        }
+      } catch {
+        // Status WA bersifat pelengkap — jangan gagalkan pemuatan daftar order.
+      }
+    }
   }, []);
 
   const loadLicenseProducts = useCallback(async () => {
@@ -170,6 +221,60 @@ export default function AdminOrdersPage() {
     load();
   }
 
+  /** Kirim ulang notifikasi WA — isi pesan sama persis seperti menu Notifikasi WA. */
+  async function handleResendWhatsapp(order: Order, phone?: string) {
+    setWaSending(order.order_code);
+    const toastId = toast.loading(`Mengirim ulang WA ke ${order.buyer_name}...`);
+
+    try {
+      const response = await fetch("/api/admin/whatsapp/order-notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: order.id,
+          orderCode: order.order_code,
+          phone: phone || undefined,
+        }),
+      });
+
+      const payload = (await response.json()) as { error?: string; phone?: string };
+
+      if (!response.ok) {
+        toast.error(`WA gagal: ${payload.error || "tidak diketahui"}`, { id: toastId });
+        return;
+      }
+
+      toast.success(`WA terkirim ke ${payload.phone || order.buyer_whatsapp}`, { id: toastId });
+      setWaDetail(null);
+      await load();
+    } catch (error) {
+      toast.error(
+        `WA gagal: ${error instanceof Error ? error.message : "tidak diketahui"}`,
+        { id: toastId }
+      );
+    } finally {
+      setWaSending(null);
+    }
+  }
+
+  /** Buka riwayat percobaan kirim WA untuk satu order. */
+  async function openWaDetail(order: Order) {
+    setWaDetail({ order, logs: [] });
+
+    try {
+      const response = await fetch(
+        `/api/admin/whatsapp/order-notifications?orderCode=${encodeURIComponent(order.order_code)}`,
+        { cache: "no-store" }
+      );
+      const payload = (await response.json()) as { logs?: WhatsappLogRow[] };
+      if (response.ok && payload.logs) {
+        setWaDetail({ order, logs: payload.logs });
+      }
+    } catch {
+      // Riwayat bersifat pelengkap.
+    }
+  }
+
   const filtered = orders
     .filter((order) => {
       if (filter !== "all" && order.status !== filter) return false;
@@ -269,6 +374,12 @@ export default function AdminOrdersPage() {
               <td className="py-3 px-4 text-dark-400 text-xs">{formatDate(order.created_at)}</td>
               <td className="py-3 px-4 text-right">
                 <div className="flex items-center justify-end gap-2">
+                  <WaStatusButton
+                    summary={waSummaries[order.order_code]}
+                    sending={waSending === order.order_code}
+                    onResend={() => void handleResendWhatsapp(order)}
+                    onDetail={() => void openWaDetail(order)}
+                  />
                   <select value={order.status} onChange={(e) => void handleStatusChange(order, e.target.value as OrderStatus)} className="px-2 py-1 rounded-lg bg-dark-800 border border-dark-700 text-white text-xs focus:outline-none">
                     <option value="pending">Menunggu</option><option value="paid">Dibayar</option><option value="failed">Gagal</option><option value="cancelled">Dibatalkan</option>
                   </select>
@@ -303,6 +414,183 @@ export default function AdminOrdersPage() {
           }}
         />
       ) : null}
+
+      {waDetail ? (
+        <WaDetailModal
+          order={waDetail.order}
+          logs={waDetail.logs}
+          sending={waSending === waDetail.order.order_code}
+          onClose={() => setWaDetail(null)}
+          onResend={(phone) => void handleResendWhatsapp(waDetail.order, phone)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Tombol WA di kolom Aksi: hijau = notif terakhir terkirim, merah = ada yang
+ * gagal (klik untuk kirim ulang), plus tombol riwayat.
+ */
+function WaStatusButton({
+  summary,
+  sending,
+  onResend,
+  onDetail,
+}: {
+  summary?: WhatsappOrderSummary;
+  sending: boolean;
+  onResend: () => void;
+  onDetail: () => void;
+}) {
+  const failed = Boolean(summary?.needs_resend);
+  const sent = Boolean(summary && summary.last_status === "sent" && !summary.needs_resend);
+  const never = !summary;
+
+  const label = sending
+    ? "Mengirim..."
+    : failed
+      ? "WA gagal — kirim ulang"
+      : never
+        ? "Belum ada notif WA"
+        : "Notif WA terkirim";
+
+  const tone = sending
+    ? "bg-dark-800 text-dark-300 border-dark-700"
+    : failed
+      ? "bg-red-500/15 text-red-400 border-red-500/40 hover:bg-red-500/25"
+      : sent
+        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+        : "bg-dark-800 text-dark-400 border-dark-700 hover:text-white";
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={onResend}
+        disabled={sending}
+        title={
+          failed
+            ? `Gagal: ${summary?.last_error || "tidak diketahui"} — klik untuk kirim ulang`
+            : `${label}${summary?.last_at ? ` (${formatDate(summary.last_at)})` : ""} — klik untuk kirim ulang`
+        }
+        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-semibold transition-all disabled:opacity-60 ${tone}`}
+      >
+        <FaWhatsapp size={13} />
+        {sending ? <FaSyncAlt size={11} className="animate-spin" /> : null}
+      </button>
+      <button
+        type="button"
+        onClick={onDetail}
+        title="Riwayat notifikasi WA order ini"
+        className="p-2 rounded-lg text-dark-400 hover:text-white hover:bg-dark-800"
+      >
+        <FaSyncAlt size={12} />
+      </button>
+    </div>
+  );
+}
+
+/** Riwayat percobaan kirim WA + form kirim ulang (termasuk override nomor). */
+function WaDetailModal({
+  order,
+  logs,
+  sending,
+  onClose,
+  onResend,
+}: {
+  order: Order;
+  logs: WhatsappLogRow[];
+  sending: boolean;
+  onClose: () => void;
+  onResend: (phone?: string) => void;
+}) {
+  const [phone, setPhone] = useState(order.buyer_whatsapp || "");
+  const last = logs[0];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-dark-900 border border-dark-800 p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-white">Notifikasi WhatsApp</h2>
+            <p className="text-dark-400 text-xs mt-0.5 font-mono">{order.order_code}</p>
+            <p className="text-dark-500 text-xs">
+              {order.buyer_name} · {order.buyer_email}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-800">
+            <FaTimes size={14} />
+          </button>
+        </div>
+
+        {last?.error ? (
+          <div className="mb-4 rounded-xl bg-red-500/10 border border-red-500/30 p-3">
+            <p className="text-red-400 text-xs font-semibold mb-1">Kegagalan terakhir</p>
+            <p className="text-red-300 text-xs break-words">{last.error}</p>
+          </div>
+        ) : null}
+
+        <label className="block text-dark-400 text-xs mb-1">Nomor tujuan</label>
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="628xxxxxxxxxx"
+          className="w-full mb-1 px-3 py-2 rounded-lg bg-dark-800 border border-dark-700 text-white text-sm focus:outline-none focus:border-primary-500"
+        />
+        <p className="text-dark-500 text-xs mb-4">
+          Ubah nomor kalau nomor pembeli salah (mis. terisi &quot;0&quot;), lalu klik Kirim Ulang.
+        </p>
+
+        <button
+          onClick={() => onResend(phone)}
+          disabled={sending}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-semibold transition-all"
+        >
+          {sending ? <FaSyncAlt size={14} className="animate-spin" /> : <FaWhatsapp size={15} />}
+          {sending ? "Mengirim..." : "Kirim Ulang WA"}
+        </button>
+
+        <div className="mt-6">
+          <p className="text-dark-400 text-xs font-semibold mb-2">
+            Riwayat percobaan ({logs.length})
+          </p>
+          {logs.length === 0 ? (
+            <p className="text-dark-500 text-xs">Belum ada percobaan kirim yang tercatat.</p>
+          ) : (
+            <div className="space-y-2">
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className={`rounded-xl border p-3 ${
+                    log.status === "sent"
+                      ? "bg-emerald-500/5 border-emerald-500/25"
+                      : "bg-red-500/5 border-red-500/25"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={`text-xs font-semibold ${
+                        log.status === "sent" ? "text-emerald-400" : "text-red-400"
+                      }`}
+                    >
+                      {log.status === "sent" ? "Terkirim" : "Gagal"} ·{" "}
+                      {log.type === "order_created" ? "notif order baru" : "update status"}
+                    </span>
+                    <span className="text-dark-500 text-xs">{formatDate(log.created_at)}</span>
+                  </div>
+                  <p className="text-dark-400 text-xs mt-1">
+                    ke {log.phone || "-"} · oleh {log.sender}
+                  </p>
+                  {log.error ? (
+                    <p className="text-red-300 text-xs mt-1 break-words">{log.error}</p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

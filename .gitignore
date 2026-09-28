@@ -45,6 +45,11 @@ Screenshot_*.jpg
 semua produk.html
 supabase/.temp/
 
+# runtime data & backup lokal (berisi upload/token — jangan di-push)
+/data/
+/backups/
+.tmp-*.html
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

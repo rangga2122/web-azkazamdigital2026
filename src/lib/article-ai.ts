@@ -372,61 +372,107 @@ Kembalikan HANYA JSON valid dengan struktur:
   };
 }
 
-async function callNvidiaChatCompletion(messages: ChatMessage[]) {
-  const apiKey = process.env.NVIDIA_API_KEY?.trim();
-  const invokeUrl =
-    process.env.NVIDIA_INVOKE_URL?.trim() ||
-    "https://integrate.api.nvidia.com/v1/chat/completions";
-  const model =
-    process.env.NVIDIA_ARTICLE_MODEL?.trim() || "openai/gpt-oss-120b";
+const COSMIC_MCP_URL =
+  process.env.COSMIC_MCP_URL?.trim() ||
+  "https://gen.azkazamdigital.com/mcp";
 
+let cosmicSessionId: string | null = null;
+
+async function callCosmicChatText(prompt: string): Promise<string> {
+  const apiKey = process.env.COSMIC_MCP_KEY?.trim();
   if (!apiKey) {
-    throw new Error("NVIDIA_API_KEY belum diset.");
+    throw new Error("COSMIC_MCP_KEY belum diset.");
   }
 
-  const response = await fetch(invokeUrl, {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+    Authorization: `Bearer ${apiKey}`,
+  };
+  if (cosmicSessionId) {
+    headers["Mcp-Session-Id"] = cosmicSessionId;
+  }
+
+  // Initialize handshake (sekali per proses / saat sesi invalid)
+  const initRes = await fetch(COSMIC_MCP_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
-      model,
-      messages,
-      temperature: 1,
-      top_p: 1,
-      frequency_penalty: 0,
-      presence_penalty: 0,
-      max_tokens: 4096,
-      stream: false,
-      reasoning_effort: "medium",
+      jsonrpc: "2.0",
+      id: 0,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "azkazam-article-ai", version: "1.0.0" },
+      },
+    }),
+    cache: "no-store",
+  });
+  const newSession = initRes.headers.get("mcp-session-id");
+  if (newSession) {
+    cosmicSessionId = newSession;
+    headers["Mcp-Session-Id"] = newSession;
+  }
+  if (initRes.status === 202 || initRes.ok) {
+    await fetch(COSMIC_MCP_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+      cache: "no-store",
+    }).catch(() => null);
+  }
+
+  const res = await fetch(COSMIC_MCP_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "chat_text", arguments: { prompt } },
     }),
     cache: "no-store",
   });
 
-  const payload = (await response.json().catch(() => null)) as ChatCompletionResponse | null;
+  const payload = (await res.json().catch(() => null)) as {
+    result?: { content?: Array<{ type?: string; text?: string }> };
+    error?: { message?: string };
+  } | null;
 
-  if (!response.ok) {
+  if (!res.ok || payload?.error) {
+    // Sesi invalid -> reset lalu biarkan pemanggil berikutnya handshake ulang
+    cosmicSessionId = null;
     throw new Error(
       payload?.error?.message ||
-        `Permintaan ke NVIDIA gagal dengan status ${response.status}.`
+        `Permintaan ke Cosmic MCP gagal dengan status ${res.status}.`
     );
   }
 
-  const content = payload?.choices?.[0]?.message?.content;
-  if (typeof content === "string") {
-    return content;
-  }
+  const text = (payload?.result?.content || [])
+    .map((item) => item.text || "")
+    .join("")
+    .trim();
 
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => item.text || "")
-      .join("")
-      .trim();
+  if (!text) {
+    throw new Error("Respons Cosmic MCP tidak berisi konten artikel.");
   }
+  return text;
+}
 
-  throw new Error("Respons NVIDIA tidak berisi konten artikel.");
+async function callNvidiaChatCompletion(messages: ChatMessage[]) {
+  // Mesin artikel dipindah ke Cosmic MCP (NVIDIA endpoint lama mati / 410).
+  // Format pesan dipiparkan menjadi satu prompt.
+  const prompt = messages
+    .map((m) => {
+      if (m.role === "system") {
+        return `[INSTRUKSI SISTEM]\n${m.content}`;
+      }
+      return m.content;
+    })
+    .join("\n\n");
+
+  return callCosmicChatText(prompt);
 }
 
 function applyPromptTemplate(
@@ -441,19 +487,54 @@ function applyPromptTemplate(
 function parseJsonResponse(rawResponse: string) {
   const trimmed = rawResponse.trim();
 
+  // Buang pembungkus markdown code fence bila ada
+  const cleaned = trimmed
+    .replace(/^```(?:json)?\\s*/i, "")
+    .replace(/\\s*```$/, "")
+    .trim();
+
   try {
-    return JSON.parse(trimmed) as Record<string, unknown>;
+    return JSON.parse(cleaned) as Record<string, unknown>;
   } catch {
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}$/);
-    if (!jsonMatch) {
+    // Cari objek JSON seimbang di mana pun dalam teks (kurung kurawal pembuka-penutup)
+    const start = cleaned.indexOf("{");
+    if (start === -1) {
       throw new Error("AI tidak mengembalikan JSON yang bisa diproses.");
     }
-
-    try {
-      return JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    } catch {
-      throw new Error("JSON artikel dari AI tidak valid.");
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < cleaned.length; i += 1) {
+      const ch = cleaned[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === "{") depth += 1;
+      if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            return JSON.parse(cleaned.slice(start, i + 1)) as Record<
+              string,
+              unknown
+            >;
+          } catch {
+            break;
+          }
+        }
+      }
     }
+    throw new Error("JSON artikel dari AI tidak valid.");
   }
 }
 

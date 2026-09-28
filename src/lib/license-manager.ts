@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { provisionAffiliateAccessForLicensedEmail } from "@/lib/license-affiliate-access";
 import { createLicenseManagerClient } from "@/lib/license-client";
+import { resolveNewLicenseExpiryDate } from "@/lib/license-provisioning-rules.mjs";
 import {
   enrichLicenseProductsWithCatalogMatches,
   loadCatalogProducts,
@@ -211,7 +212,11 @@ export async function addLicenseUsers(input: {
       id: crypto.randomUUID(),
       email: normalizedEmail,
       role: input.role,
-      expiry_date: entry.expiryDate || null,
+      expiry_date: resolveNewLicenseExpiryDate({
+        requestedExpiryDate: entry.expiryDate || null,
+        defaultExpiryDays: productDefaults?.defaultExpiryDays || null,
+        today: startOfToday(),
+      }),
       allowed_features: nextAllowedFeatures.length > 0 ? nextAllowedFeatures : null,
       max_sessions: nextMaxSessions,
       product_name: entry.productName,

@@ -297,13 +297,9 @@ export function OrderFormClient({
               defaultChecked
               className="h-4 w-4 accent-blue-500"
             />
-            <img
-              src="/bank-transfer-qris.jpg"
-              alt="Bank Transfer"
-              className="h-8 w-14 rounded-[2px] object-contain"
-              loading="lazy"
-              decoding="async"
-            />
+            <span className="flex h-9 w-14 items-center justify-center rounded-[6px] border border-indigo-200 bg-gradient-to-br from-blue-600 to-purple-500 text-[11px] font-extrabold tracking-wide text-white">
+              QRIS
+            </span>
             <span className="text-base font-semibold text-slate-950">
               {paymentMethodLabel}
             </span>
@@ -314,12 +310,12 @@ export function OrderFormClient({
           type="submit"
           disabled={loading}
           data-order-submit="true"
-          className="w-full rounded-[8px] bg-[#13bd12] px-6 py-4 text-lg font-extrabold uppercase tracking-wide text-white shadow-sm transition hover:bg-[#0ead0e] disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full rounded-[9px] bg-gradient-to-r from-blue-600 to-purple-500 px-6 py-4 text-lg font-extrabold text-white shadow-[0_10px_30px_rgba(99,102,241,0.35)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? "Memproses..." : "Pesan Sekarang"}
         </button>
 
-        <div className="rounded-[8px] border border-blue-500 bg-white p-4">
+        <div className="rounded-[9px] border border-blue-500 bg-white p-4">
           <div className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">
             Rincian Pesanan:
           </div>

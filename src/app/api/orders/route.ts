@@ -24,6 +24,7 @@ import {
   productImageFromProduct,
   sendOrderCreatedWhatsappNotifications,
 } from "@/lib/whatsapp-notifications";
+import { recordWhatsappNotification } from "@/lib/whatsapp-notification-log";
 
 type CreateOrderPayload = {
   product_id?: string;
@@ -488,6 +489,8 @@ async function runPostOrderSideEffects(input: PostOrderSideEffectsInput) {
         productImageUrl: productImageFromProduct(input.product),
       }),
       origin: input.origin,
+      // Hasil kirim dicatat supaya menu Pesanan tahu notif mana yang gagal.
+      record: recordWhatsappNotification,
     }),
     syncOrderWhatsappFollowups({
       config: whatsappConfig,

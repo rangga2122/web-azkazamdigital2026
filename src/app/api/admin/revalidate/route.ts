@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath, revalidateTag } from "next/cache";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { verifyLmAdmin } from "@/lib/lm-admin";
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,29 +41,12 @@ export async function POST(request: NextRequest) {
 }
 
 async function requireAdmin() {
-  const sessionSupabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await sessionSupabase.auth.getUser();
+  const admin = await verifyLmAdmin();
 
-  if (!user) {
+  if (!admin.ok) {
     return {
       ok: false as const,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
-    };
-  }
-
-  const { data: admin } = await sessionSupabase
-    .from("admins")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (!admin) {
-    return {
-      ok: false as const,
-      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
     };
   }
 

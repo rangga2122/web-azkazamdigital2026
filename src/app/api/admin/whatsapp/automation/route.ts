@@ -17,6 +17,7 @@ import {
   serializeWhatsappNotificationConfig,
   type WhatsappNotificationConfig,
 } from "@/lib/whatsapp-notifications";
+import { verifyLmAdmin } from "@/lib/lm-admin";
 
 type AutomationAction =
   | "start-broadcast"
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
     if (body.action === "start-broadcast") {
       await createWhatsappBroadcast({
         config,
-        createdBy: adminCheck.admin.user_id || null,
+        createdBy: adminCheck.admin?.email || null,
       });
     } else if (body.action === "pause-broadcast") {
       if (!body.broadcastId) {
@@ -120,35 +121,18 @@ export async function POST(request: NextRequest) {
 }
 
 async function requireAdmin() {
-  const sessionSupabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await sessionSupabase.auth.getUser();
+  const admin = await verifyLmAdmin();
 
-  if (!user) {
+  if (!admin.ok) {
     return {
       ok: false as const,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
 
-  const { data: admin } = await sessionSupabase
-    .from("admins")
-    .select("id, user_id, is_active")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (!admin) {
-    return {
-      ok: false as const,
-      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
-    };
-  }
-
   return {
     ok: true as const,
-    admin,
+    admin: { email: admin.email },
   };
 }
 

@@ -1,0 +1,65 @@
+version: "3.8"
+
+services:
+  azkazam-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: azkazam-web
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - HOSTNAME=0.0.0.0
+    volumes:
+      - ./data/uploads:/app/public/uploads
+    networks:
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      # HTTP → HTTPS redirect (www)
+      - "traefik.http.routers.azkazam-http-www.entryPoints=http"
+      - "traefik.http.routers.azkazam-http-www.rule=Host(`www.azkazamdigital.com`) && PathPrefix(`/`)"
+      - "traefik.http.routers.azkazam-http-www.middlewares=azkazam-redirect"
+      - "traefik.http.routers.azkazam-http-www.service=azkazam-svc"
+      # HTTP → HTTPS redirect (apex)
+      - "traefik.http.routers.azkazam-http-apex.entryPoints=http"
+      - "traefik.http.routers.azkazam-http-apex.rule=Host(`azkazamdigital.com`) && PathPrefix(`/`)"
+      - "traefik.http.routers.azkazam-http-apex.middlewares=azkazam-redirect"
+      - "traefik.http.routers.azkazam-http-apex.service=azkazam-svc"
+      # HTTPS (www)
+      - "traefik.http.routers.azkazam-https-www.entryPoints=https"
+      - "traefik.http.routers.azkazam-https-www.rule=Host(`www.azkazamdigital.com`) && PathPrefix(`/`)"
+      - "traefik.http.routers.azkazam-https-www.middlewares=azkazam-gzip"
+      - "traefik.http.routers.azkazam-https-www.service=azkazam-svc"
+      - "traefik.http.routers.azkazam-https-www.tls=true"
+      - "traefik.http.routers.azkazam-https-www.tls.certresolver=letsencrypt"
+      # HTTPS (apex)
+      - "traefik.http.routers.azkazam-https-apex.entryPoints=https"
+      - "traefik.http.routers.azkazam-https-apex.rule=Host(`azkazamdigital.com`) && PathPrefix(`/`)"
+      - "traefik.http.routers.azkazam-https-apex.middlewares=azkazam-gzip"
+      - "traefik.http.routers.azkazam-https-apex.service=azkazam-svc"
+      - "traefik.http.routers.azkazam-https-apex.tls=true"
+      - "traefik.http.routers.azkazam-https-apex.tls.certresolver=letsencrypt"
+      # Middleware: redirect + gzip
+      - "traefik.http.middlewares.azkazam-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.azkazam-gzip.compress=true"
+      # Service
+      - "traefik.http.services.azkazam-svc.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+networks:
+  coolify:
+    external: true

@@ -2,6 +2,28 @@ import { sanitizePublicMediaUrl } from "@/lib/legacy-media";
 import { getSiteUrl } from "@/lib/site-url";
 import type { Product } from "@/types";
 
+/**
+ * Pencatat hasil kirim notifikasi WA.
+ *
+ * Modul ini juga dipakai komponen client (menu Notifikasi WA), jadi TIDAK boleh
+ * mengimpor modul server (next/headers) seperti whatsapp-notification-log.
+ * Pemanggil server (api/orders, order-paid) menyuntikkan recorder; kalau tidak
+ * ada, hasil kirim hanya masuk console.
+ */
+export type WhatsappNotificationType = "order_created" | "status_update";
+export type WhatsappNotificationStatus = "sent" | "failed";
+
+export type WhatsappNotificationRecorder = (input: {
+  orderId?: string | null;
+  orderCode: string;
+  type: WhatsappNotificationType;
+  status: WhatsappNotificationStatus;
+  phone?: string | null;
+  message?: string | null;
+  error?: unknown;
+  sender?: string | null;
+}) => Promise<void> | void;
+
 export type WhatsappStatus = "pending" | "paid" | "failed" | "cancelled";
 
 export type WhatsappBroadcastStatus =
@@ -118,6 +140,9 @@ export type PaidAccessTemplateContext = {
   productDownloadUrl: string;
   productDemoUrl: string;
   productPurchaseUrl: string;
+  fbmpLoginUrl?: string;
+  fbmpLoginPassword?: string;
+  fbmpMode?: string;
 };
 
 const DEFAULT_CUSTOMER_TEMPLATE =
@@ -389,6 +414,43 @@ export function resolveWhatsappTemplate(
   return resolveTemplateTokens(template, buildOrderTemplateTokens(context));
 }
 
+/**
+ * Render pesan notifikasi "order baru" (dipakai checkout DAN kirim ulang dari
+ * menu Pesanan) supaya isi pesan selalu identik dengan menu Notifikasi WA.
+ */
+export function renderOrderCreatedMessage(
+  config: Pick<WhatsappNotificationConfig, "customerTemplate">,
+  order: WhatsappOrderContext
+) {
+  return resolveWhatsappTemplate(config.customerTemplate, order);
+}
+
+/**
+ * Render pesan notifikasi perubahan status = statusTemplate + pesan akses produk
+ * (paidAccessEntries). Dipakai oleh webhook/admin status DAN kirim ulang.
+ */
+export function renderOrderStatusMessage(
+  config: Pick<WhatsappNotificationConfig, "statusTemplate">,
+  order: WhatsappOrderContext,
+  accessMessage?: string | null
+) {
+  const access = String(accessMessage || "").trim();
+  const statusMessage = resolveWhatsappTemplate(config.statusTemplate, order).trim();
+  return [statusMessage, access].filter(Boolean).join("\n\n");
+}
+
+/** Nomor tujuan notifikasi pelanggan (dipakai juga oleh kirim ulang). */
+export function resolveOrderNotificationReceiver(
+  config: Pick<WhatsappNotificationConfig, "formatNumber" | "provider">,
+  context: WhatsappOrderContext
+) {
+  return formatWhatsappApiReceiver(
+    context.customerPhone,
+    config.formatNumber,
+    config.provider
+  );
+}
+
 export function resolveBroadcastTemplate(
   template: string,
   context: WhatsappBroadcastRecipientContext
@@ -457,6 +519,16 @@ export function resolvePaidAccessTemplate(
     "{product_download_url}": context.productDownloadUrl,
     "{product_demo_url}": context.productDemoUrl,
     "{product_purchase_url}": context.productPurchaseUrl,
+    "{fbmp_login_url}": context.fbmpLoginUrl || "",
+    "{fbmp_login_password}": context.fbmpLoginPassword || "",
+    "{fbmp_mode}": context.fbmpMode === "created" ? "Akun baru" : context.fbmpMode === "extended" ? "Perpanjangan" : "",
+    // Template produk FBMP memakai token ini; sebelumnya tidak pernah diganti
+    // sehingga pembeli menerima teks "{fbmp_mode_note}" mentah di WhatsApp.
+    "{fbmp_mode_note}": context.fbmpMode === "created"
+      ? "Akun Anda baru dibuat — simpan password di atas untuk login."
+      : context.fbmpMode === "extended"
+        ? "Masa aktif lisensi Anda sudah diperpanjang."
+        : "",
   });
 }
 
@@ -613,9 +685,14 @@ export async function sendOrderCreatedWhatsappNotifications(args: {
   config: WhatsappNotificationConfig;
   order: WhatsappOrderContext;
   origin: string;
+  /** "system" = checkout/webhook, atau email admin saat kirim ulang manual. */
+  sender?: string | null;
+  /** Pencatat hasil kirim (disuntikkan pemanggil server). */
+  record?: WhatsappNotificationRecorder;
 }) {
   const { config, order } = args;
   if (!config.enabled) return { adminSent: false, customerSent: false };
+  const record = args.record;
 
   let adminSent = false;
   let customerSent = false;
@@ -636,12 +713,50 @@ export async function sendOrderCreatedWhatsappNotifications(args: {
   );
 
   if (config.notifyCustomer && customerReceiver) {
-    const message = resolveWhatsappTemplate(config.customerTemplate, order);
-    await sendWhatsappMessage(config, customerReceiver, message);
-    customerSent = true;
+    const message = renderOrderCreatedMessage(config, order);
+    try {
+      await sendWhatsappMessage(config, customerReceiver, message);
+      customerSent = true;
 
-    if (config.enableImage && imageUrl) {
-      await sendWhatsappImage(config, customerReceiver, imageUrl, "");
+      let imageError: unknown = null;
+      if (config.enableImage && imageUrl) {
+        try {
+          await sendWhatsappImage(config, customerReceiver, imageUrl, "");
+        } catch (error) {
+          // Pesan teks sudah terkirim — jangan tandai percobaan ini gagal,
+          // cukup catat supaya admin tahu gambarnya tidak terkirim.
+          imageError = error;
+          console.error("Send order WhatsApp image error:", error);
+        }
+      }
+
+      await record?.({
+        orderId: order.orderId,
+        orderCode: order.orderCode,
+        type: "order_created",
+        status: "sent",
+        phone: customerReceiver,
+        message,
+        error: imageError
+          ? `Pesan terkirim, gambar gagal: ${
+              imageError instanceof Error ? imageError.message : String(imageError)
+            }`
+          : null,
+        sender: args.sender || "system",
+      });
+    } catch (error) {
+      // Tetap dilempar supaya pemanggil (Promise.allSettled) mencatat error seperti sebelumnya.
+      await record?.({
+        orderId: order.orderId,
+        orderCode: order.orderCode,
+        type: "order_created",
+        status: "failed",
+        phone: customerReceiver,
+        message,
+        error,
+        sender: args.sender || "system",
+      });
+      throw error;
     }
   }
 
@@ -663,8 +778,13 @@ export async function sendOrderStatusWhatsappNotification(args: {
   order: WhatsappOrderContext;
   origin: string;
   accessMessage?: string | null;
+  /** "system" = webhook/admin status, atau email admin saat kirim ulang manual. */
+  sender?: string | null;
+  /** Pencatat hasil kirim (disuntikkan pemanggil server). */
+  record?: WhatsappNotificationRecorder;
 }) {
   const { config, order } = args;
+  const record = args.record;
   if (!config.enabled || !config.notifyCustomerStatus) {
     return { customerSent: false };
   }
@@ -673,25 +793,55 @@ export async function sendOrderStatusWhatsappNotification(args: {
     return { customerSent: false };
   }
 
-  const receiver = formatWhatsappApiReceiver(
-    order.customerPhone,
-    config.formatNumber,
-    config.provider
-  );
+  const receiver = resolveOrderNotificationReceiver(config, order);
   if (!receiver) return { customerSent: false };
 
-  const accessMessage = String(args.accessMessage || "").trim();
-  const statusMessage = resolveWhatsappTemplate(config.statusTemplate, order).trim();
-  const message = [statusMessage, accessMessage].filter(Boolean).join("\n\n");
-  await sendWhatsappMessage(config, receiver, message);
+  const message = renderOrderStatusMessage(config, order, args.accessMessage);
 
-  const imageUrl = pickNotificationImage(
-    order.productImageUrl || null,
-    config.defaultImageUrl,
-    args.origin
-  );
-  if (config.enableImage && imageUrl) {
-    await sendWhatsappImage(config, receiver, imageUrl, "");
+  try {
+    await sendWhatsappMessage(config, receiver, message);
+
+    const imageUrl = pickNotificationImage(
+      order.productImageUrl || null,
+      config.defaultImageUrl,
+      args.origin
+    );
+    let imageError: unknown = null;
+    if (config.enableImage && imageUrl) {
+      try {
+        await sendWhatsappImage(config, receiver, imageUrl, "");
+      } catch (error) {
+        imageError = error;
+        console.error("Send order status WhatsApp image error:", error);
+      }
+    }
+
+    await record?.({
+      orderId: order.orderId,
+      orderCode: order.orderCode,
+      type: "status_update",
+      status: "sent",
+      phone: receiver,
+      message,
+      error: imageError
+        ? `Pesan terkirim, gambar gagal: ${
+            imageError instanceof Error ? imageError.message : String(imageError)
+          }`
+        : null,
+      sender: args.sender || "system",
+    });
+  } catch (error) {
+    await record?.({
+      orderId: order.orderId,
+      orderCode: order.orderCode,
+      type: "status_update",
+      status: "failed",
+      phone: receiver,
+      message,
+      error,
+      sender: args.sender || "system",
+    });
+    throw error;
   }
 
   return { customerSent: true };

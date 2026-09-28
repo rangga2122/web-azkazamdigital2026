@@ -168,8 +168,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   );
 
   async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await fetch("/api/admin/auth/logout", { method: "POST" });
     toast.success("Berhasil logout");
     router.push("/login");
   }

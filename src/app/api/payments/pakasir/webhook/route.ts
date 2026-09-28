@@ -59,6 +59,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Project slug webhook tidak cocok." }, { status: 400 });
     }
 
+    if (existingOrder.payment_provider !== "pakasir") {
+      return NextResponse.json({ success: false, error: "Provider pembayaran tidak cocok." }, { status: 400 });
+    }
+
+    if (existingOrder.status === "paid") {
+      return NextResponse.json({ success: true, alreadyProcessed: true });
+    }
+
     if (Math.round(Number(existingOrder.total_amount || 0)) !== amount) {
       return NextResponse.json({ success: false, error: "Amount webhook tidak cocok." }, { status: 400 });
     }
@@ -89,6 +97,7 @@ export async function POST(request: NextRequest) {
         gateway_payload: body,
       })
       .eq("id", existingOrder.id)
+      .eq("status", existingOrder.status)
       .select(
         "id, order_code, status, buyer_name, buyer_email, buyer_whatsapp, product_name, product_id, subtotal, unique_code, total_amount, gateway_total_payment, created_at"
       )

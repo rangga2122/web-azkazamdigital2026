@@ -16,7 +16,17 @@ import {
   resolvePaidAccessTemplate,
   sendOrderStatusWhatsappNotification,
 } from "@/lib/whatsapp-notifications";
+import { recordWhatsappNotification } from "@/lib/whatsapp-notification-log";
 import type { LicenseProvisionResultStatus } from "@/types/license-manager";
+import {
+  resolveSingleLicenseProductMatch,
+  shouldProcessPaidTransition,
+} from "@/lib/license-provisioning-rules.mjs";
+import {
+  isFbmpProductSlug,
+  provisionFbmpUser,
+  type FbmpProvisionResult,
+} from "@/lib/fbmp-provisioning";
 
 type ServiceSupabase = Awaited<
   ReturnType<typeof import("@/lib/supabase/server").createServiceRoleClient>
@@ -117,10 +127,13 @@ export async function processOrderPaidTransition(input: {
     settings?.whatsapp_number || null
   );
 
-  if (input.previousStatus !== "paid" && input.updatedOrder.status === "paid") {
+  if (shouldProcessPaidTransition(input.previousStatus, input.updatedOrder.status)) {
     const licenseRegistration =
       input.licenseRegistration ||
-      (await resolveAutomaticLicenseRegistration(input.updatedOrder));
+      (await resolveAutomaticLicenseRegistration({
+        ...input.updatedOrder,
+        product_slug: product?.slug || null,
+      }));
 
     if (licenseRegistration?.enabled && licenseRegistration.productEntries.length > 0) {
       try {
@@ -166,6 +179,28 @@ export async function processOrderPaidTransition(input: {
       console.error("Auto create affiliate auth account error:", error);
     }
 
+    // FBMP PRO: order paid -> otomatis buat/perpanjang user di fbmp.azkazamdigital.com
+    // (BEBAS License Manager — user eksplisit: FBMP kelola user di DB-nya sendiri.)
+    let fbmpProvision: FbmpProvisionResult | null = null;
+    if (product?.slug && isFbmpProductSlug(product.slug)) {
+      fbmpProvision = await provisionFbmpUser({
+        buyerEmail: input.updatedOrder.buyer_email,
+        buyerName: input.updatedOrder.buyer_name,
+        productSlug: product.slug,
+      });
+      if (fbmpProvision.ok) {
+        console.log(
+          `[fbmp-provision] Order ${input.updatedOrder.order_code}: ${fbmpProvision.mode} user ${input.updatedOrder.buyer_email} (${product.slug})`
+        );
+      } else {
+        // Guard desain final 15 Sep: order tetap paid, pembeli tidak kehilangan hak —
+        // aktivasi manual bisa dilakukan via panel Admin FBMP.
+        console.error(
+          `[fbmp-provision] Order ${input.updatedOrder.order_code}: GAGAL — ${fbmpProvision.error} (aktivasi manual via Admin FBMP)`
+        );
+      }
+    }
+
     const accessEntry = resolvePaidAccessEntry(whatsappConfig, {
       id: input.updatedOrder.product_id,
       title: product?.title || input.updatedOrder.product_name,
@@ -196,6 +231,9 @@ export async function processOrderPaidTransition(input: {
       productDownloadUrl: product?.digital_file_url || "",
       productDemoUrl: product?.demo_url || "",
       productPurchaseUrl: product?.purchase_url || "",
+      fbmpLoginUrl: fbmpProvision?.ok ? fbmpProvision.loginUrl || "" : "",
+      fbmpLoginPassword: fbmpProvision?.ok ? fbmpProvision.initialPassword || "" : "",
+      fbmpMode: fbmpProvision?.ok ? fbmpProvision.mode || "" : "",
     };
     paidAccessEmailMessage = accessEntry?.emailMessage
       ? resolvePaidAccessTemplate(accessEntry.emailMessage, accessContext)
@@ -270,6 +308,8 @@ export async function processOrderPaidTransition(input: {
       origin: input.origin,
       accessMessage:
         input.updatedOrder.status === "paid" ? paidAccessWhatsappMessage : null,
+      // Hasil kirim dicatat supaya menu Pesanan tahu notif mana yang gagal.
+      record: recordWhatsappNotification,
     });
 
     whatsappResult = {
@@ -326,8 +366,18 @@ function countLicenseStatuses(
 }
 
 async function resolveAutomaticLicenseRegistration(
-  order: Pick<PaidTransitionOrder, "product_id" | "product_name" | "order_code">
+  order: Pick<PaidTransitionOrder, "product_id" | "product_name" | "order_code"> & {
+    product_slug?: string | null;
+  }
 ): Promise<LicenseRegistrationPayload | null> {
+  // FBMP PRO dikelola di DB FBMP sendiri (provisionFbmpUser) — BEBAS License Manager
+  // (user eksplisit 15 Sep: "tidak usah masukkan di lisensi agar tidak saling mengganggu").
+  if (isFbmpProductSlug(order.product_slug)) {
+    console.log(
+      `[license-auto] Order ${order.order_code}: skipped (FBMP product — provisioning via FBMP)`
+    );
+    return null;
+  }
   if (!order.product_id) {
     console.log(
       `[license-auto] Order ${order.order_code}: skipped, no product_id`
@@ -351,13 +401,13 @@ async function resolveAutomaticLicenseRegistration(
         product.is_active && product.matched_catalog_product_id === order.product_id
     );
 
-    let matchedProducts = matchedBySync;
+    let matchedByName: typeof matchedBySync = [];
 
     // Strategy 2: Fallback — match by normalized product name
     if (matchedBySync.length === 0 && order.product_name) {
       const normalizedOrderName = normalizeLicenseProductName(order.product_name);
       if (normalizedOrderName) {
-        const matchedByName = licenseProducts.filter(
+        matchedByName = licenseProducts.filter(
           (product) =>
             product.is_active &&
             normalizeLicenseProductName(product.name) === normalizedOrderName
@@ -366,12 +416,16 @@ async function resolveAutomaticLicenseRegistration(
           console.log(
             `[license-auto] Order ${order.order_code}: matched by name "${order.product_name}" → ${matchedByName.map((p) => p.name).join(", ")}`
           );
-          matchedProducts = matchedByName;
         }
       }
     }
 
-    if (matchedProducts.length === 0) {
+    const matchedProduct = resolveSingleLicenseProductMatch({
+      mappedProducts: matchedBySync,
+      namedProducts: matchedByName,
+    });
+
+    if (!matchedProduct) {
       console.log(
         `[license-auto] Order ${order.order_code}: no license product match for product_id=${order.product_id} name="${order.product_name}"`
       );
@@ -379,18 +433,18 @@ async function resolveAutomaticLicenseRegistration(
     }
 
     console.log(
-      `[license-auto] Order ${order.order_code}: auto-registering license for ${matchedProducts.map((p) => p.name).join(", ")}`
+      `[license-auto] Order ${order.order_code}: auto-registering license for ${matchedProduct.name}`
     );
 
     return {
       enabled: true,
       role: "user",
       allowedFeatures: [],
-      productEntries: matchedProducts.map((product) => ({
-        productName: product.name,
+      productEntries: [{
+        productName: matchedProduct.name,
         expiryDate: null,
         maxSessions: null,
-      })),
+      }],
     };
   } catch (error) {
     console.error(
